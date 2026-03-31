@@ -1,0 +1,33 @@
+# railway.toml  —  Deploy to Railway.app
+#
+# Instructions:
+#   1. Install Railway CLI:  npm install -g @railway/cli
+#   2. Login:               railway login
+#   3. Initialize:          railway init
+#   4. Add Postgres plugin:  railway add --plugin postgresql
+#   5. Add Redis plugin:     railway add --plugin redis
+#   6. Deploy:              railway up
+#   7. Open:                railway open
+#
+# Railway auto-provides DATABASE_URL and REDIS_URL from the plugins.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "audiobook-api"
+
+[services.variables]
+USE_CELERY = "true"
+DEBUG = "false"
+# Set these in Railway dashboard:
+# ELEVENLABS_API_KEY = "..."
+# SECRET_KEY = "..." (use: openssl rand -hex 32)

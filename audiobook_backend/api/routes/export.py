@@ -1,0 +1,96 @@
+"""
+api/routes/export.py — Audiobook export management
+"""
+from __future__ import annotations
+import logging
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
+
+from models.database import db
+from config import settings
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/export", tags=["Export"])
+
+
+@router.post("/{book_id}", response_model=dict)
+async def trigger_export(
+    book_id: str,
+    background_tasks: BackgroundTasks,
+    export_format: str = "mp3",
+    add_music: bool = False,
+):
+    book = await db.get_by_id(db.books, book_id)
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if book.get("status") not in ("completed", "failed"):
+        raise HTTPException(409, "Book is still being processed.")
+    file_path_str = book.get("file_path")
+    if not file_path_str or not Path(file_path_str).exists():
+        raise HTTPException(400, "Source file no longer available. Please re-upload.")
+
+    from models.schemas import ProcessingOptions, ExportFormat
+    options = ProcessingOptions(
+        export_format=ExportFormat(export_format),
+        add_background_music=add_music,
+    )
+    await db.update_by_id(db.books, book_id, {
+        "status": "pending", "progress": 0.0,
+        "error_message": None, "export_path": None,
+    })
+
+    if settings.USE_CELERY:
+        from celery_app import process_book_task
+        process_book_task.delay(book_id, file_path_str, options.model_dump())
+    else:
+        background_tasks.add_task(_rerun, book_id, Path(file_path_str), options)
+
+    return {"success": True, "message": "Re-export started", "book_id": book_id}
+
+
+async def _rerun(book_id, file_path, options):
+    try:
+        from services.pipeline import run_pipeline
+        await run_pipeline(book_id, file_path, options)
+    except Exception as e:
+        logger.error(f"Re-export failed: {e}")
+
+
+@router.get("/{book_id}/status", response_model=dict)
+async def export_status(book_id: str):
+    book = await db.get_by_id(db.books, book_id)
+    if not book:
+        raise HTTPException(404, "Book not found")
+    stats = {}
+    if (ep := book.get("export_path")):
+        ep = Path(ep)
+        if ep.exists():
+            from services.audio_mixer import get_audio_stats
+            stats = get_audio_stats(ep)
+            stats["filename"]     = ep.name
+            stats["download_url"] = f"/api/v1/export/{book_id}/download"
+    return {
+        "book_id":       book_id,
+        "title":         book.get("title"),
+        "status":        book.get("status"),
+        "progress":      book.get("progress", 0),
+        "export":        stats or None,
+        "error_message": book.get("error_message"),
+    }
+
+
+@router.get("/{book_id}/download")
+async def download_audiobook(book_id: str):
+    book = await db.get_by_id(db.books, book_id)
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if book.get("status") != "completed":
+        raise HTTPException(425, f"Not ready yet. Status: {book.get('status')}")
+    ep = Path(book.get("export_path", ""))
+    if not ep.exists():
+        raise HTTPException(404, "Export file not found")
+    media = "audio/mp4" if ep.suffix == ".m4b" else "audio/mpeg"
+    return FileResponse(str(ep), media_type=media, filename=ep.name,
+                        headers={"Content-Disposition": f'attachment; filename="{ep.name}"'})

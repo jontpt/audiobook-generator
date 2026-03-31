@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Environment — NEVER commit
+.env
+*.env.local
+*.env.production
+*.env.development.local
+
+# Storage runtime data
+audiobook_backend/storage/uploads/*
+audiobook_backend/storage/audio/*
+audiobook_backend/storage/exports/*
+audiobook_backend/storage/music_cache/*
+audiobook_backend/storage/*.sqlite
+audiobook_backend/storage/db.json
+!audiobook_backend/storage/uploads/.gitkeep
+!audiobook_backend/storage/audio/.gitkeep
+!audiobook_backend/storage/exports/.gitkeep
+!audiobook_backend/storage/music_cache/.gitkeep
+
+# Node
+audiobook_frontend/node_modules/
+audiobook_frontend/.vite/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+nohup.out
+
+# Sandbox output
+output/

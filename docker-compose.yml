@@ -1,0 +1,130 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Audiobook Generator — Docker Compose
+#
+#  Services:
+#    postgres   — PostgreSQL 16 (persistent storage)
+#    redis      — Redis 7 (Celery broker + result backend)
+#    app        — FastAPI + React frontend (port 8000)
+#    worker     — Celery worker (pipeline processing)
+#    flower     — Celery monitoring UI (port 5555)
+#
+#  Quick start:
+#    cp audiobook_backend/.env.example .env
+#    docker compose up -d
+#    open http://localhost:8000
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+asyncpg://audiobook:audiobook@postgres:5432/audiobook
+  REDIS_URL: redis://redis:6379/0
+  USE_CELERY: "true"
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-openssl-rand-hex-32}
+  ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+  MUBERT_API_KEY: ${MUBERT_API_KEY:-}
+  SOUNDRAW_API_KEY: ${SOUNDRAW_API_KEY:-}
+  DEBUG: ${DEBUG:-false}
+  CORS_ORIGINS: ${CORS_ORIGINS:-*}
+  UPLOAD_DIR: /app/storage/uploads
+  AUDIO_DIR: /app/storage/audio
+  EXPORT_DIR: /app/storage/exports
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: audiobook
+      POSTGRES_PASSWORD: audiobook
+      POSTGRES_DB: audiobook
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audiobook"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI app (web + frontend) ───────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *app-env
+    volumes:
+      - app_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Celery worker ──────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: >
+      celery -A celery_app.celery_app worker
+      --loglevel=info
+      --queues=pipeline
+      --concurrency=2
+      --max-tasks-per-child=10
+    environment:
+      <<: *app-env
+    volumes:
+      - app_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Flower (Celery monitoring) ─────────────────────────────────────────────
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: >
+      celery -A celery_app.celery_app flower
+      --port=5555
+      --basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
+    ports:
+      - "5555:5555"
+    environment:
+      <<: *app-env
+    depends_on:
+      - redis
+      - worker
+
+volumes:
+  postgres_data:
+  redis_data:
+  app_storage:

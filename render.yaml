@@ -1,0 +1,86 @@
+# render.yaml  —  Deploy to Render.com (free tier available)
+#
+# Instructions:
+#   1. Push this repo to GitHub
+#   2. Go to render.com → New → Blueprint
+#   3. Connect your repo → Render auto-reads this file
+#   4. Set ELEVENLABS_API_KEY in the Render dashboard (Environment tab)
+#   5. Your app will be live at  https://<service-name>.onrender.com
+
+services:
+  # ── FastAPI Web Service ──────────────────────────────────────────────────
+  - type: web
+    name: audiobook-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free          # or "starter" ($7/mo) for always-on
+    region: oregon
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: audiobook-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: audiobook-redis
+          property: connectionString
+      - key: USE_CELERY
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true   # Render auto-generates a secure random value
+      - key: DEBUG
+        value: "false"
+      - key: ELEVENLABS_API_KEY
+        sync: false           # Set manually in dashboard
+      - key: MUBERT_API_KEY
+        sync: false
+      - key: SOUNDRAW_API_KEY
+        sync: false
+    disk:
+      name: audiobook-storage
+      mountPath: /app/storage
+      sizeGB: 10
+
+  # ── Celery Worker ────────────────────────────────────────────────────────
+  - type: worker
+    name: audiobook-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: >
+      celery -A celery_app.celery_app worker
+      --loglevel=info --queues=pipeline --concurrency=2
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: audiobook-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: audiobook-redis
+          property: connectionString
+      - key: USE_CELERY
+        value: "true"
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: audiobook-api
+          envVarKey: SECRET_KEY
+      - key: ELEVENLABS_API_KEY
+        sync: false
+    disk:
+      name: audiobook-worker-storage
+      mountPath: /app/storage
+      sizeGB: 10
+
+databases:
+  # ── PostgreSQL ─────────────────────────────────────────────────────────
+  - name: audiobook-db
+    plan: free          # 1GB storage, 97 connection limit
+
+  # ── Redis ──────────────────────────────────────────────────────────────
+  - name: audiobook-redis
+    type: redis
+    plan: free          # 25MB, sufficient for task queue

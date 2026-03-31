@@ -1,0 +1,52 @@
+# fly.toml  —  Deploy to Fly.io
+#
+# Instructions:
+#   1. Install flyctl:  https://fly.io/docs/hands-on/install-flyctl/
+#   2. Login:           flyctl auth login
+#   3. First deploy:    flyctl launch  (auto-detects Dockerfile)
+#   4. Set secrets:     flyctl secrets set ELEVENLABS_API_KEY=xxx SECRET_KEY=$(openssl rand -hex 32)
+#   5. Deploy updates:  flyctl deploy
+#   6. View app:        flyctl open
+#
+# Free tier: 3 shared VMs, 160GB bandwidth/month
+
+app = "audiobook-generator"
+primary_region = "ord"   # Chicago — change to nearest: lax, fra, syd, etc.
+kill_signal = "SIGINT"
+kill_timeout = 30
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[http_service.checks]]
+  grace_period = "15s"
+  interval = "30s"
+  method = "GET"
+  path = "/health"
+  timeout = "10s"
+
+[env]
+  USE_CELERY = "false"   # Set to "true" if adding Redis via fly.io add-ons
+  DEBUG = "false"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "audiobook_storage"
+  destination = "/app/storage"
+  initial_size = "5gb"
+
+# To add PostgreSQL:  flyctl postgres create --name audiobook-db
+# To add Redis:       flyctl redis create --name audiobook-redis
+# Then attach:        flyctl postgres attach --app audiobook-generator audiobook-db
