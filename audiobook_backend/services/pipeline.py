@@ -169,13 +169,16 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _resolve_voice(characters: list[dict], speaker: str | None) -> str:
+# NEW
+def _resolve_voice(voice_assignment: dict[str, str], speaker: str | None) -> str:
+    """Look up voice_id from the assignment dict {name: voice_id}."""
     if not speaker:
-        return settings.DEFAULT_NARRATOR_VOICE_ID
-    for char in characters:
-        if char.get("name") == speaker and char.get("voice_id"):
-            return char["voice_id"]
-    return settings.DEFAULT_NARRATOR_VOICE_ID
+        return voice_assignment.get("narrator", settings.DEFAULT_NARRATOR_VOICE_ID)
+    return voice_assignment.get(
+        speaker,
+        voice_assignment.get("narrator", settings.DEFAULT_NARRATOR_VOICE_ID)
+    )
+
 
 
 async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | None]:
