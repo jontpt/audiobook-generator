@@ -82,19 +82,21 @@ def _filter_voices(
     ]
     if exclude_ids:
         candidates = [v for v in candidates if v.voice_id not in exclude_ids]
-        def _char_attr(char, attr: str, default=None):
+    return candidates
+
+
+def _char_attr(char, attr: str, default=None):
     """Get attribute from either a Character object or a dict."""
     if isinstance(char, dict):
         return char.get(attr, default)
     return getattr(char, attr, default)
 
-    return candidates
-
 
 def assign_voices(characters) -> dict[str, str]:
     """
-    Auto-assign ElevenLabs voice_id to each character.
+    Auto-assign a unique ElevenLabs voice_id to each character.
     Accepts list[Character] OR list[dict] (from process_chapters).
+    Returns dict: {character_name: voice_id}
     """
     assignment: dict[str, str] = {"narrator": NARRATOR_VOICE_ID}
     used_voice_ids: set[str] = {NARRATOR_VOICE_ID}
@@ -123,7 +125,6 @@ def assign_voices(characters) -> dict[str, str]:
         logger.debug(f"Assigned voice '{voice.name}' → character '{name}'")
 
     return assignment
-
 
 
 def get_voice_info(voice_id: str) -> VoiceInfo | None:
