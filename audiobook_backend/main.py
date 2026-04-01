@@ -149,7 +149,7 @@ async def _val_err(request: Request, exc: ValueError):
 @app.exception_handler(Exception)
 async def _generic(request: Request, exc: Exception):
     logger.error(f"Unhandled: {exc}", exc_info=True)
-    return JSONResponse(500, {"success": False, "error": "Internal server error"})
+    return JSONResponse(content={"success": False, "error": "Internal server error"}, status_code=500)
 
 
 # ─── Serve React frontend (LAST — SPA catch-all) ──────────────────────────────

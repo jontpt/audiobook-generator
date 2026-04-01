@@ -88,16 +88,19 @@ async def validate_api_key(key_id: str, current_user: dict = Depends(get_current
 
 
 async def _validate(service: str, key: str) -> bool:
-    """Validate API key by testing a lightweight service call."""
+    """Validate API key using a lightweight TTS streaming call."""
     try:
         import httpx
         if service == "elevenlabs":
-            # Use /v1/models (no user_read permission required)
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(
-                    "https://api.elevenlabs.io/v1/models",
-                    headers={"xi-api-key": key}
+            # Use /v1/text-to-speech/{voice_id}/stream — works with tts-only scope keys
+            # Only request 1 character to minimise credit usage
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.post(
+                    "https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB/stream",
+                    headers={"xi-api-key": key, "Content-Type": "application/json"},
+                    json={"text": ".", "model_id": "eleven_multilingual_v2"}
                 )
+                # 200 = valid key with TTS access; 401/403 = invalid
                 return r.status_code == 200
         return bool(key)
     except Exception:
