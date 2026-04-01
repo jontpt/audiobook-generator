@@ -81,13 +81,20 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
         await _update(book_id, "analyzing", 0.38,
                       f"Found {len(characters)} characters, {len(segments)} segments")
 
-        # ─── 3. Voice assignment ─────────────────────────────────────────────
-        from services.voice_manager import assign_voices
-        characters_updated = await asyncio.get_event_loop().run_in_executor(
+        # NEW (fixed)
+        # assign_voices returns dict[str, str]: {character_name → voice_id}
+        voice_assignment = await asyncio.get_event_loop().run_in_executor(
             None, assign_voices, characters
         )
-        for char in characters_updated:
-            await db.update_by_id(db.characters, char["id"], {"voice_id": char["voice_id"]})
+        # Update each character DB record with its assigned voice_id
+        for char in characters:
+            char_name = char.get("name", "")
+            if char_name in voice_assignment:
+                await db.update_by_id(
+                    db.characters, char["id"],
+                    {"voice_id": voice_assignment[char_name]}
+                )
+
 
         # ─── 4. TTS synthesis ────────────────────────────────────────────────
         await _update(book_id, "synthesizing", 0.42, "Generating voice audio…")
