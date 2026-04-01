@@ -1,86 +1,88 @@
-# render.yaml  —  Deploy to Render.com (free tier available)
+# render.yaml  —  Deploy to Render.com
 #
-# Instructions:
-#   1. Push this repo to GitHub
-#   2. Go to render.com → New → Blueprint
-#   3. Connect your repo → Render auto-reads this file
-#   4. Set ELEVENLABS_API_KEY in the Render dashboard (Environment tab)
-#   5. Your app will be live at  https://<service-name>.onrender.com
+# ┌─────────────────────────────────────────────────────────────────┐
+# │  FREE TIER blueprint  (no credit card required)                 │
+# │  Provisions: Web service + PostgreSQL + Redis                   │
+# │  Processing runs via FastAPI BackgroundTasks (USE_CELERY=false) │
+# └─────────────────────────────────────────────────────────────────┘
+#
+# DEPLOY INSTRUCTIONS:
+#   1. Go to https://render.com  →  sign in with GitHub
+#   2. Click  New  →  Blueprint
+#   3. Select your  audiobook-generator  repo
+#   4. Render reads this file and shows a summary — click  Apply
+#   5. After services are created, open the  audiobook-api  service
+#      → Environment tab → set  ELEVENLABS_API_KEY  (optional, mock works without it)
+#   6. Your app is live at  https://audiobook-api.onrender.com
+#
+# UPGRADE TO PAID ($7/mo starter) for:
+#   - Always-on (no cold starts after 15 min idle)
+#   - Persistent disk for uploaded files
+#   - Celery worker service for parallel processing
+#
+# See  render-paid.yaml  for the full paid configuration.
 
 services:
-  # ── FastAPI Web Service ──────────────────────────────────────────────────
+
+  # ── FastAPI Web Service (React frontend + API) ────────────────────
   - type: web
     name: audiobook-api
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free          # or "starter" ($7/mo) for always-on
+    plan: free
     region: oregon
+    healthCheckPath: /health
     envVars:
+      # PostgreSQL — auto-injected from the database below
       - key: DATABASE_URL
         fromDatabase:
           name: audiobook-db
           property: connectionString
+
+      # Redis — auto-injected from the Redis instance below
       - key: REDIS_URL
         fromService:
           type: redis
           name: audiobook-redis
           property: connectionString
+
+      # Use FastAPI BackgroundTasks on free tier (no separate worker needed)
       - key: USE_CELERY
-        value: "true"
+        value: "false"
+
+      # Render auto-generates a cryptographically secure value
       - key: SECRET_KEY
-        generateValue: true   # Render auto-generates a secure random value
+        generateValue: true
+
       - key: DEBUG
         value: "false"
+
+      # ── Set these manually in the Render dashboard after deploy ───
+      # Profile → audiobook-api → Environment → Add Environment Variable
       - key: ELEVENLABS_API_KEY
-        sync: false           # Set manually in dashboard
+        sync: false          # leave blank for mock/demo mode
       - key: MUBERT_API_KEY
         sync: false
       - key: SOUNDRAW_API_KEY
         sync: false
-    disk:
-      name: audiobook-storage
-      mountPath: /app/storage
-      sizeGB: 10
 
-  # ── Celery Worker ────────────────────────────────────────────────────────
-  - type: worker
-    name: audiobook-worker
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: >
-      celery -A celery_app.celery_app worker
-      --loglevel=info --queues=pipeline --concurrency=2
-    plan: free
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: audiobook-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: audiobook-redis
-          property: connectionString
-      - key: USE_CELERY
-        value: "true"
-      - key: SECRET_KEY
-        fromService:
-          type: web
-          name: audiobook-api
-          envVarKey: SECRET_KEY
-      - key: ELEVENLABS_API_KEY
-        sync: false
-    disk:
-      name: audiobook-worker-storage
-      mountPath: /app/storage
-      sizeGB: 10
+      # Storage paths inside the container
+      - key: UPLOAD_DIR
+        value: /app/storage/uploads
+      - key: AUDIO_DIR
+        value: /app/storage/audio
+      - key: EXPORT_DIR
+        value: /app/storage/exports
 
+# ── Managed databases (free tier) ─────────────────────────────────
 databases:
-  # ── PostgreSQL ─────────────────────────────────────────────────────────
-  - name: audiobook-db
-    plan: free          # 1GB storage, 97 connection limit
 
-  # ── Redis ──────────────────────────────────────────────────────────────
+  # PostgreSQL 16 — 1 GB storage, 97 max connections, Oregon region
+  - name: audiobook-db
+    databaseName: audiobook
+    user: audiobook
+    plan: free
+
+  # Redis 7 — 25 MB RAM (plenty for job queue + session cache)
   - name: audiobook-redis
-    type: redis
-    plan: free          # 25MB, sufficient for task queue
+    plan: free

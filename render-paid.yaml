@@ -1,0 +1,102 @@
+# render-paid.yaml  —  Render.com PAID tier configuration
+#
+# Use this when upgrading from the free blueprint.
+# Adds: persistent disk, Celery worker, always-on (no cold starts)
+#
+# To use:  rename this file to render.yaml  and redeploy.
+# Cost estimate: ~$21/mo  (2× starter web + starter worker + free DB + free Redis)
+
+services:
+
+  # ── FastAPI Web Service ────────────────────────────────────────────
+  - type: web
+    name: audiobook-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter          # $7/mo — always-on, 512 MB RAM
+    region: oregon
+    healthCheckPath: /health
+    disk:
+      name: audiobook-storage
+      mountPath: /app/storage
+      sizeGB: 10           # $1.50/mo per GB
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: audiobook-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: audiobook-redis
+          property: connectionString
+      - key: USE_CELERY
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "false"
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: MUBERT_API_KEY
+        sync: false
+      - key: SOUNDRAW_API_KEY
+        sync: false
+      - key: UPLOAD_DIR
+        value: /app/storage/uploads
+      - key: AUDIO_DIR
+        value: /app/storage/audio
+      - key: EXPORT_DIR
+        value: /app/storage/exports
+
+  # ── Celery Worker (pipeline processing) ───────────────────────────
+  - type: worker
+    name: audiobook-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: >
+      celery -A celery_app.celery_app worker
+      --loglevel=info --queues=pipeline --concurrency=2
+      --max-tasks-per-child=10
+    plan: starter          # $7/mo
+    region: oregon
+    disk:
+      name: audiobook-worker-storage
+      mountPath: /app/storage
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: audiobook-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: audiobook-redis
+          property: connectionString
+      - key: USE_CELERY
+        value: "true"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: MUBERT_API_KEY
+        sync: false
+      - key: SOUNDRAW_API_KEY
+        sync: false
+      - key: UPLOAD_DIR
+        value: /app/storage/uploads
+      - key: AUDIO_DIR
+        value: /app/storage/audio
+      - key: EXPORT_DIR
+        value: /app/storage/exports
+
+databases:
+
+  - name: audiobook-db
+    databaseName: audiobook
+    user: audiobook
+    plan: free             # free 1 GB  (upgrade to starter for 10 GB)
+
+  - name: audiobook-redis
+    plan: free             # free 25 MB (upgrade to starter for 100 MB)
