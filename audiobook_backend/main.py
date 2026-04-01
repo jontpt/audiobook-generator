@@ -95,8 +95,14 @@ async def health():
         "mock_mode":             not bool(settings.ELEVENLABS_API_KEY),
     }
 
-@app.get("/", tags=["System"])
+@app.get("/", tags=["System"], include_in_schema=False)
 async def root():
+    # Serve React SPA if frontend is built, otherwise return API info JSON
+    _dist = BASE_DIR.parent / "audiobook_frontend" / "dist"
+    _dist_docker = BASE_DIR / "frontend" / "dist"
+    _frontend = _dist if _dist.exists() else (_dist_docker if _dist_docker.exists() else None)
+    if _frontend:
+        return FileResponse(str(_frontend / "index.html"))
     return {"name": settings.APP_NAME, "version": settings.APP_VERSION,
             "docs": "/docs", "status": "running"}
 
