@@ -88,12 +88,14 @@ async def validate_api_key(key_id: str, current_user: dict = Depends(get_current
 
 
 async def _validate(service: str, key: str) -> bool:
+    """Validate API key by testing a lightweight service call."""
     try:
         import httpx
         if service == "elevenlabs":
-            async with httpx.AsyncClient(timeout=8) as client:
+            # Use /v1/models (no user_read permission required)
+            async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.get(
-                    "https://api.elevenlabs.io/v1/user",
+                    "https://api.elevenlabs.io/v1/models",
                     headers={"xi-api-key": key}
                 )
                 return r.status_code == 200

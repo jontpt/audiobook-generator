@@ -158,7 +158,7 @@ class Database:
                 ).params(v=value)
             else:
                 stmt = select(table).where(
-                    text(f"payload->>'{ field }' = :v")
+                    text(f"payload->>'{field}' = :v")
                 ).params(v=str(value))
             result = await session.execute(stmt)
             return [_from_json(r.payload) for r in result.scalars().all()]
