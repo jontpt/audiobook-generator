@@ -81,8 +81,9 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
         await _update(book_id, "analyzing", 0.38,
                       f"Found {len(characters)} characters, {len(segments)} segments")
 
-        # NEW (fixed)
+        # ─── 3. Voice assignment ─────────────────────────────────────────────
         # assign_voices returns dict[str, str]: {character_name → voice_id}
+        from services.voice_manager import assign_voices
         voice_assignment = await asyncio.get_event_loop().run_in_executor(
             None, assign_voices, characters
         )
@@ -95,17 +96,16 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
                     {"voice_id": voice_assignment[char_name]}
                 )
 
-
         # ─── 4. TTS synthesis ────────────────────────────────────────────────
         await _update(book_id, "synthesizing", 0.42, "Generating voice audio…")
-        voice_id = _resolve_voice(voice_assignment, speaker)
+
         from services.tts_service import synthesize_segment
         total_segs = len(segments)
         synthesized = 0
 
         for seg in segments:
             speaker  = seg.get("speaker")
-            voice_id = _resolve_voice(characters_updated, speaker)
+            voice_id = _resolve_voice(voice_assignment, speaker)
             audio_path = await asyncio.get_event_loop().run_in_executor(
                 None,
                 synthesize_segment,
@@ -169,7 +169,6 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-# NEW
 def _resolve_voice(voice_assignment: dict[str, str], speaker: str | None) -> str:
     """Look up voice_id from the assignment dict {name: voice_id}."""
     if not speaker:
@@ -178,7 +177,6 @@ def _resolve_voice(voice_assignment: dict[str, str], speaker: str | None) -> str
         speaker,
         voice_assignment.get("narrator", settings.DEFAULT_NARRATOR_VOICE_ID)
     )
-
 
 
 async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | None]:
