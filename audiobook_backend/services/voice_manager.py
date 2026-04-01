@@ -85,44 +85,36 @@ def _filter_voices(
     return candidates
 
 
-def assign_voices(characters: list[Character]) -> dict[str, str]:
+def assign_voices(characters) -> dict[str, str]:
     """
     Auto-assign a unique ElevenLabs voice_id to each character.
-    Returns dict: {character_name: voice_id}
-
-    Assignment rules:
-      1. Narrator always gets NARRATOR_VOICE_ID.
-      2. Each named character gets a voice matching their gender.
-      3. No two characters share the same voice (unless we run out).
+    Accepts list[Character] OR list[dict] (from process_chapters).
     """
     assignment: dict[str, str] = {"narrator": NARRATOR_VOICE_ID}
     used_voice_ids: set[str] = {NARRATOR_VOICE_ID}
 
-    # Sort by appearance count descending (more important characters get better voices)
-    sorted_chars = sorted(characters, key=lambda c: -c.appearance_count)
+    sorted_chars = sorted(characters, key=lambda c: -(_char_attr(c, "appearance_count") or 0))
 
     for char in sorted_chars:
-        if char.name.lower() == "narrator":
+        name      = _char_attr(char, "name", "")
+        gender    = _char_attr(char, "gender", Gender.NEUTRAL)
+        age_group = _char_attr(char, "age_group", "adult")
+
+        if not name or name.lower() == "narrator":
             continue
 
-        candidates = _filter_voices(char.gender, char.age_group, used_voice_ids)
-
+        candidates = _filter_voices(gender, age_group, used_voice_ids)
         if not candidates:
-            # Relax age constraint
-            candidates = _filter_voices(char.gender, "any", used_voice_ids)
-
+            candidates = _filter_voices(gender, "any", used_voice_ids)
         if not candidates:
-            # Relax gender constraint too
             candidates = _filter_voices(Gender.NEUTRAL, "any", used_voice_ids)
-
         if not candidates:
-            # Reuse a voice as last resort
             candidates = _filter_voices(Gender.NEUTRAL, "any", None)
 
         voice = candidates[0] if candidates else VOICE_CATALOGUE[0]
-        assignment[char.name] = voice.voice_id
+        assignment[name] = voice.voice_id
         used_voice_ids.add(voice.voice_id)
-        logger.debug(f"Assigned voice '{voice.name}' → character '{char.name}'")
+        logger.debug(f"Assigned voice '{voice.name}' → character '{name}'")
 
     return assignment
 
