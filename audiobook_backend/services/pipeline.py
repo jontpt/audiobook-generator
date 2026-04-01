@@ -98,7 +98,7 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
 
         # ─── 4. TTS synthesis ────────────────────────────────────────────────
         await _update(book_id, "synthesizing", 0.42, "Generating voice audio…")
-
+        voice_id = _resolve_voice(voice_assignment, speaker)
         from services.tts_service import synthesize_segment
         total_segs = len(segments)
         synthesized = 0
