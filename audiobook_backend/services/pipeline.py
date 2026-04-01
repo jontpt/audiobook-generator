@@ -129,15 +129,42 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
         # ─── 6. Audio mixing ─────────────────────────────────────────────────
         await _update(book_id, "mixing", 0.83, "Assembling chapter audio…")
 
-        from services.audio_mixer import assemble_audiobook
-        # Refresh segments with audio paths
+        from services.audio_mixer import assemble_chapter, merge_chapters
+        from types import SimpleNamespace
+        from collections import defaultdict
+        # Refresh segments with audio paths from DB
         segments_fresh = await db.search(db.segments, "book_id", book_id)
 
+        # Group segments by chapter_index, convert dict → obj for assemble_chapter
+        segs_by_chapter: dict[int, list] = defaultdict(list)
+        for seg in segments_fresh:
+            seg_obj = SimpleNamespace(**seg)
+            segs_by_chapter[seg.get("chapter_index", 0)].append(seg_obj)
+
+        # Assemble each chapter
+        chapter_paths = []
+        for ch in chapters:
+            ch_idx   = ch.get("index", 0)
+            ch_title = ch.get("title", f"Chapter {ch_idx + 1}")
+            ch_segs  = segs_by_chapter.get(ch_idx, [])
+            music_p  = music_tracks.get(ch.get("dominant_emotion", "neutral"))
+            ch_path  = await asyncio.get_event_loop().run_in_executor(
+                None,
+                assemble_chapter,
+                ch_segs, ch_title, book_id, ch_idx,
+                music_p, options.music_volume_db,
+            )
+            if ch_path:
+                chapter_paths.append(ch_path)
+
+        # Merge all chapters into the final audiobook file
+        book_record = await db.get_by_id(db.books, book_id)
+        book_title  = book_record.get("title", "Audiobook") if book_record else "Audiobook"
         export_path = await asyncio.get_event_loop().run_in_executor(
             None,
-            assemble_audiobook,
-            book_id, chapters, segments_fresh, music_tracks,
-            str(options.export_format.value), options.music_volume_db,
+            merge_chapters,
+            chapter_paths, book_id, book_title, "AudioBook Generator",
+            str(options.export_format.value),
         )
 
         await _update(book_id, "mixing", 0.95, "Finalizing export…")
