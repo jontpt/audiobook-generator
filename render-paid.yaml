@@ -101,6 +101,9 @@ services:
     plan: starter          # $10/mo — persistent disk, 100 MB RAM
     region: oregon
     maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all connections
 
 databases:
 

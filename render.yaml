@@ -40,21 +40,21 @@ services:
     healthCheckPath: /health
     envVars:
 
-      # ── PostgreSQL — auto-injected from the database below ────────
+      # PostgreSQL — auto-injected from the database below
       - key: DATABASE_URL
         fromDatabase:
           name: audiobook-db
           property: connectionString
 
-      # ── Redis (Key Value) — auto-injected from service below ──────
-      # NOTE: type must be "keyvalue" (not "redis" which is deprecated)
+      # Redis (Key Value) — auto-injected from service below
+      # type MUST be "keyvalue" ("redis" is deprecated per Render docs)
       - key: REDIS_URL
         fromService:
           name: audiobook-redis
           type: keyvalue
           property: connectionString
 
-      # BackgroundTasks on free tier (no separate worker process)
+      # BackgroundTasks on free tier (no separate worker process needed)
       - key: USE_CELERY
         value: "false"
 
@@ -65,7 +65,7 @@ services:
       - key: DEBUG
         value: "false"
 
-      # ── Set these manually after deploy ───────────────────────────
+      # Set these manually after deploy:
       # Dashboard → audiobook-api → Environment → Add Variable
       - key: ELEVENLABS_API_KEY
         sync: false          # blank = mock mode (fully functional demo)
@@ -74,7 +74,7 @@ services:
       - key: SOUNDRAW_API_KEY
         sync: false
 
-      # Storage paths (ephemeral on free tier — use Postgres for data)
+      # Storage paths (ephemeral on free tier — data lives in Postgres)
       - key: UPLOAD_DIR
         value: /app/storage/uploads
       - key: AUDIO_DIR
@@ -83,19 +83,22 @@ services:
         value: /app/storage/exports
 
   # ── Redis / Key Value instance ────────────────────────────────────
-  # IMPORTANT: Must be in "services" (not "databases") — Render docs:
-  # https://render.com/docs/blueprint-spec#keyvalue
+  # Per Render docs: type "keyvalue" must be in "services" (not "databases")
+  # ipAllowList is REQUIRED for keyvalue — use 0.0.0.0/0 to allow all
   - type: keyvalue
     name: audiobook-redis
     plan: free
     region: oregon
-    maxmemoryPolicy: allkeys-lru   # evict least-recently-used keys when full
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all connections
 
 # ── Managed databases ──────────────────────────────────────────────
 databases:
 
-  # PostgreSQL 16 — 1 GB storage (free, expires 30 days after creation)
-  # Upgrade to starter ($7/mo) to remove the 30-day limit
+  # PostgreSQL 16 — 1 GB storage, free (expires 30 days after creation)
+  # Upgrade to basic-256mb ($7/mo) to remove the 30-day expiry limit
   - name: audiobook-db
     databaseName: audiobook
     user: audiobook
