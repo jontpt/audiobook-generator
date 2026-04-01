@@ -1,20 +1,9 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║  Stage 1 — Build React frontend                                  ║
+# ║  Single-Stage Python Build                                       ║
+# ║  Frontend is pre-built and committed at audiobook_frontend/dist  ║
+# ║  No Node.js required — fast, reliable Render free-tier build     ║
 # ╚══════════════════════════════════════════════════════════════════╝
-FROM node:20-slim AS frontend-builder
-
-WORKDIR /frontend
-COPY audiobook_frontend/package*.json ./
-RUN npm ci --silent
-
-COPY audiobook_frontend/ ./
-RUN npm run build
-
-
-# ╔══════════════════════════════════════════════════════════════════╗
-# ║  Stage 2 — Python backend + bundled frontend                     ║
-# ╚══════════════════════════════════════════════════════════════════╝
-FROM python:3.11-slim AS backend
+FROM python:3.11-slim
 
 # System deps (ffmpeg for pydub, gcc for some wheels)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,20 +16,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Python deps
+# Python deps first (layer cache optimisation)
 COPY audiobook_backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Download spaCy model (small, ~12 MB)
+# Download spaCy model (~12 MB)
 RUN python -m spacy download en_core_web_sm
 
 # Copy backend source
 COPY audiobook_backend/ ./
 
-# Copy built React assets into backend so FastAPI can serve them
-COPY --from=frontend-builder /frontend/dist ./frontend/dist
+# Copy pre-built React frontend assets (committed to repo)
+# FastAPI serves these via StaticFiles at /app/frontend/dist
+COPY audiobook_frontend/dist ./frontend/dist
 
-# Create storage dirs
+# Create persistent storage dirs
 RUN mkdir -p storage/uploads storage/audio storage/exports storage/music_cache
 
 # Non-root user for security
@@ -50,7 +40,7 @@ USER appuser
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

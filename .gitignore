@@ -9,6 +9,7 @@ venv/
 env/
 build/
 dist/
+!audiobook_frontend/dist/
 *.egg-info/
 .eggs/
 
