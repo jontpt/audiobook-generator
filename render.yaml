@@ -2,25 +2,31 @@
 #
 # ┌─────────────────────────────────────────────────────────────────┐
 # │  FREE TIER blueprint  (no credit card required)                 │
-# │  Provisions: Web service + PostgreSQL + Redis                   │
+# │  Provisions: Web service + PostgreSQL + Redis (Key Value)       │
 # │  Processing runs via FastAPI BackgroundTasks (USE_CELERY=false) │
 # └─────────────────────────────────────────────────────────────────┘
 #
-# DEPLOY INSTRUCTIONS:
-#   1. Go to https://render.com  →  sign in with GitHub
-#   2. Click  New  →  Blueprint
-#   3. Select your  audiobook-generator  repo
-#   4. Render reads this file and shows a summary — click  Apply
-#   5. After services are created, open the  audiobook-api  service
-#      → Environment tab → set  ELEVENLABS_API_KEY  (optional, mock works without it)
-#   6. Your app is live at  https://audiobook-api.onrender.com
+# ⚠️  FREE TIER LIMITS TO KNOW:
+#   - Web service sleeps after 15 min idle (~60s cold start to wake)
+#   - Postgres FREE expires after 30 days (upgrade to keep data)
+#   - Redis FREE is in-memory only (data lost on restart)
+#   - Only 1 free Postgres + 1 free Redis per workspace
+#   - 750 free instance-hours/month (≈ 1 service running 24/7)
+#   - Ephemeral filesystem (uploaded files lost on redeploy/restart)
+#     → books are stored in Postgres, audio in /tmp (regenerated)
 #
-# UPGRADE TO PAID ($7/mo starter) for:
-#   - Always-on (no cold starts after 15 min idle)
-#   - Persistent disk for uploaded files
-#   - Celery worker service for parallel processing
+# DEPLOY INSTRUCTIONS (5 steps):
+#   1. Go to https://render.com  →  sign in / sign up with GitHub
+#   2. Click  New +  →  Blueprint
+#   3. Connect your  audiobook-generator  repo  →  click  Apply
+#   4. Wait ~8 min for Docker build + service start
+#   5. Open audiobook-api service → Environment → set ELEVENLABS_API_KEY
+#      (optional — mock mode works without it)
 #
-# See  render-paid.yaml  for the full paid configuration.
+# Your live URL:  https://audiobook-api.onrender.com
+#
+# UPGRADE TO PAID ($7/mo starter) to remove all free-tier limits.
+# See  render-paid.yaml  in this repo for the paid configuration.
 
 services:
 
@@ -33,40 +39,42 @@ services:
     region: oregon
     healthCheckPath: /health
     envVars:
-      # PostgreSQL — auto-injected from the database below
+
+      # ── PostgreSQL — auto-injected from the database below ────────
       - key: DATABASE_URL
         fromDatabase:
           name: audiobook-db
           property: connectionString
 
-      # Redis — auto-injected from the Redis instance below
+      # ── Redis (Key Value) — auto-injected from service below ──────
+      # NOTE: type must be "keyvalue" (not "redis" which is deprecated)
       - key: REDIS_URL
         fromService:
-          type: redis
           name: audiobook-redis
+          type: keyvalue
           property: connectionString
 
-      # Use FastAPI BackgroundTasks on free tier (no separate worker needed)
+      # BackgroundTasks on free tier (no separate worker process)
       - key: USE_CELERY
         value: "false"
 
-      # Render auto-generates a cryptographically secure value
+      # Render auto-generates a cryptographically secure random string
       - key: SECRET_KEY
         generateValue: true
 
       - key: DEBUG
         value: "false"
 
-      # ── Set these manually in the Render dashboard after deploy ───
-      # Profile → audiobook-api → Environment → Add Environment Variable
+      # ── Set these manually after deploy ───────────────────────────
+      # Dashboard → audiobook-api → Environment → Add Variable
       - key: ELEVENLABS_API_KEY
-        sync: false          # leave blank for mock/demo mode
+        sync: false          # blank = mock mode (fully functional demo)
       - key: MUBERT_API_KEY
         sync: false
       - key: SOUNDRAW_API_KEY
         sync: false
 
-      # Storage paths inside the container
+      # Storage paths (ephemeral on free tier — use Postgres for data)
       - key: UPLOAD_DIR
         value: /app/storage/uploads
       - key: AUDIO_DIR
@@ -74,15 +82,22 @@ services:
       - key: EXPORT_DIR
         value: /app/storage/exports
 
-# ── Managed databases (free tier) ─────────────────────────────────
+  # ── Redis / Key Value instance ────────────────────────────────────
+  # IMPORTANT: Must be in "services" (not "databases") — Render docs:
+  # https://render.com/docs/blueprint-spec#keyvalue
+  - type: keyvalue
+    name: audiobook-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru   # evict least-recently-used keys when full
+
+# ── Managed databases ──────────────────────────────────────────────
 databases:
 
-  # PostgreSQL 16 — 1 GB storage, 97 max connections, Oregon region
+  # PostgreSQL 16 — 1 GB storage (free, expires 30 days after creation)
+  # Upgrade to starter ($7/mo) to remove the 30-day limit
   - name: audiobook-db
     databaseName: audiobook
     user: audiobook
     plan: free
-
-  # Redis 7 — 25 MB RAM (plenty for job queue + session cache)
-  - name: audiobook-redis
-    plan: free
+    region: oregon

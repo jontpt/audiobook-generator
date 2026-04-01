@@ -1,10 +1,14 @@
 # render-paid.yaml  —  Render.com PAID tier configuration
 #
-# Use this when upgrading from the free blueprint.
-# Adds: persistent disk, Celery worker, always-on (no cold starts)
-#
-# To use:  rename this file to render.yaml  and redeploy.
+# Rename to render.yaml when upgrading from the free blueprint.
 # Cost estimate: ~$21/mo  (2× starter web + starter worker + free DB + free Redis)
+#
+# Benefits over free tier:
+#   ✅ Always-on (no cold starts)
+#   ✅ Persistent disk (uploaded files survive restarts)
+#   ✅ Celery worker (parallel pipeline processing)
+#   ✅ Postgres without 30-day expiry
+#   ✅ Redis with disk persistence
 
 services:
 
@@ -27,8 +31,8 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
           name: audiobook-redis
+          type: keyvalue
           property: connectionString
       - key: USE_CELERY
         value: "true"
@@ -71,8 +75,8 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
           name: audiobook-redis
+          type: keyvalue
           property: connectionString
       - key: USE_CELERY
         value: "true"
@@ -91,12 +95,18 @@ services:
       - key: EXPORT_DIR
         value: /app/storage/exports
 
+  # ── Redis / Key Value ──────────────────────────────────────────────
+  - type: keyvalue
+    name: audiobook-redis
+    plan: starter          # $10/mo — persistent disk, 100 MB RAM
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+
 databases:
 
+  # PostgreSQL 16 — no expiry on paid plan
   - name: audiobook-db
     databaseName: audiobook
     user: audiobook
-    plan: free             # free 1 GB  (upgrade to starter for 10 GB)
-
-  - name: audiobook-redis
-    plan: free             # free 25 MB (upgrade to starter for 100 MB)
+    plan: free             # free 1 GB  (upgrade to starter for 10 GB, no expiry)
+    region: oregon
