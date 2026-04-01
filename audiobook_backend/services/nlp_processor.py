@@ -271,3 +271,64 @@ def analyze_book(
         f"{len(chars)} characters discovered"
     )
     return all_chapter_segments, registry
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# process_chapters — pipeline adapter
+# ─────────────────────────────────────────────────────────────────────────────
+
+def process_chapters(
+    chapters_raw: list[dict],
+    book_id: str,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """
+    Adapter called by pipeline.py.
+
+    Accepts the raw chapter list from text_extraction:
+        [{"title": str, "paragraphs": [str]}, ...]
+
+    Returns three flat lists of dicts ready for db.insert():
+        chapters:   [Chapter.model_dump(), ...]
+        characters: [Character.model_dump(), ...]
+        segments:   [TextSegment.model_dump(), ...]
+    """
+    from models.schemas import Chapter, EmotionTag
+    from collections import Counter
+
+    # Run NLP
+    all_chapter_segs, registry = analyze_book(chapters_raw, book_id)
+
+    # ── Build chapter dicts ─────────────────────────────────────────────────
+    chapter_dicts: list[dict] = []
+    for idx, (raw_ch, ch_segs) in enumerate(zip(chapters_raw, all_chapter_segs)):
+        # Determine dominant emotion by frequency
+        emotion_counts: Counter[str] = Counter(
+            s.emotion.value for s in ch_segs if s.emotion
+        )
+        dominant = (
+            EmotionTag(emotion_counts.most_common(1)[0][0])
+            if emotion_counts
+            else EmotionTag.NEUTRAL
+        )
+        chapter = Chapter(
+            book_id=book_id,
+            index=idx,
+            title=raw_ch.get("title", f"Chapter {idx + 1}"),
+            dominant_emotion=dominant,
+            segment_count=len(ch_segs),
+        )
+        chapter_dicts.append(chapter.model_dump())
+
+    # ── Build character dicts ───────────────────────────────────────────────
+    character_dicts: list[dict] = [
+        c.model_dump() for c in registry.all_characters()
+    ]
+
+    # ── Build segment dicts (flatten chapter lists) ─────────────────────────
+    segment_dicts: list[dict] = [
+        seg.model_dump()
+        for ch_segs in all_chapter_segs
+        for seg in ch_segs
+    ]
+
+    return chapter_dicts, character_dicts, segment_dicts
