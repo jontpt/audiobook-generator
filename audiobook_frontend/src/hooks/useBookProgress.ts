@@ -51,24 +51,20 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
   const [error,              setError]              = useState<string | null>(null);
   const [wsMessageReceived,  setWsMessageReceived]  = useState(false);
 
-  // ── Stable ref so effect cleanup can always reach the latest setState calls ──
   const stateRef = useRef({ setStatus, setProgress, setMessage, setConnected,
                              setUsingFallback, setError, setWsMessageReceived });
 
   useEffect(() => {
-    // ── Guard: skip connecting for already-terminal books ──────────────────────
     if (!bookId) return;
     if (['completed', 'failed'].includes(initialStatus)) return;
 
-    // Local mutable state (no re-render cost, safe inside closure)
-    let alive       = true;   // becomes false on cleanup → prevents stale setState
+    let alive       = true;
     let retryCount  = 0;
     let ws:              WebSocket | null = null;
     let pingTimer:       ReturnType<typeof setInterval>  | null = null;
     let retryTimer:      ReturnType<typeof setTimeout>   | null = null;
     let fallbackTimer:   ReturnType<typeof setInterval>  | null = null;
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
     const stopPing = () => {
       if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
     };
@@ -89,7 +85,6 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
       stateRef.current.setConnected(false);
     };
 
-    // ── REST polling fallback ─────────────────────────────────────────────────
     const startFallback = () => {
       if (!alive || fallbackTimer) return;
       stateRef.current.setUsingFallback(true);
@@ -113,11 +108,10 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
         } catch { /* ignore transient network errors */ }
       };
 
-      poll(); // immediate first call
+      poll();
       fallbackTimer = setInterval(poll, FALLBACK_INTERVAL_MS);
     };
 
-    // ── WebSocket connect (called on initial mount + each retry) ──────────────
     const connect = () => {
       if (!alive) return;
 
@@ -125,15 +119,10 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
 
       ws.onopen = () => {
         if (!alive) { ws?.close(); return; }
-
         stateRef.current.setConnected(true);
         stateRef.current.setError(null);
-        retryCount = 0;         // reset back-off counter on successful open
-
-        // Cancel any active fallback polling
+        retryCount = 0;
         stopFallback();
-
-        // Keep-alive ping
         pingTimer = setInterval(() => {
           if (ws?.readyState === WebSocket.OPEN) ws.send('ping');
         }, PING_INTERVAL_MS);
@@ -150,13 +139,11 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
             stateRef.current.setStatus(msg.status);
             stateRef.current.setProgress(msg.progress);
             stateRef.current.setMessage(msg.message);
-
           } else if (msg.type === 'completed') {
             stateRef.current.setStatus('completed');
             stateRef.current.setProgress(1);
             alive = false;
             teardownWs();
-
           } else if (msg.type === 'error') {
             stateRef.current.setStatus('failed');
             stateRef.current.setError(msg.error);
@@ -167,7 +154,6 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
       };
 
       ws.onerror = () => {
-        // onclose fires right after onerror; reconnect logic lives there
         stateRef.current.setConnected(false);
       };
 
@@ -177,21 +163,17 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
         if (!alive) return;
 
         if (retryCount < MAX_RETRIES) {
-          // Exponential back-off: 1 s, 2 s, 4 s, 8 s, 16 s (cap 30 s)
           const delay = Math.min(1_000 * Math.pow(2, retryCount), 30_000);
           retryCount++;
           retryTimer = setTimeout(connect, delay);
         } else {
-          // All retries exhausted → fall back to REST polling
           startFallback();
         }
       };
     };
 
-    // ── Kick off ───────────────────────────────────────────────────────────────
     connect();
 
-    // ── Cleanup on unmount or bookId change ───────────────────────────────────
     return () => {
       alive = false;
       stopRetry();
@@ -199,8 +181,6 @@ export function useBookProgress(bookId: string | undefined, initialStatus: strin
       teardownWs();
     };
   }, [bookId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // NOTE: `initialStatus` is intentionally read once at mount time only.
-  // Re-subscribing on every REST-poll-triggered status change would thrash the WS.
 
   return { status, progress, message, connected, usingFallback, error, wsMessageReceived };
 }
