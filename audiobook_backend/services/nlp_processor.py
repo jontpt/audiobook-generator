@@ -106,6 +106,8 @@ _KNOWN_FEMALE_NAMES: frozenset[str] = frozenset({
     "abigail", "madison", "hannah", "samantha", "stephanie",
     "patricia", "sandra", "melissa", "donna", "carol", "ruth",
     "sharon", "deborah", "virginia", "maria", "margaret", "dorothy",
+    "effie", "corinne", "bridget", "rosa", "nora", "iris", "vera", "pearl",
+    "ruth", "agnes", "maud", "edith", "hazel", "ada", "flora", "ida",
 })
 _KNOWN_MALE_NAMES: frozenset[str] = frozenset({
     "marcus", "james", "john", "david", "michael", "robert",
@@ -117,12 +119,26 @@ _KNOWN_MALE_NAMES: frozenset[str] = frozenset({
     "aiden", "elijah", "harry", "edward", "arthur", "alfred",
     "frank", "fred", "eric", "kevin", "brian", "justin", "sean",
     "patrick", "ian", "alan", "scott", "keith", "carl", "roger",
+    "miles", "floyd", "sam", "hamish", "clint", "wade", "vince", "gil",
+    "dirk", "bart", "clem", "bud", "hank", "gus", "lenny", "mort",
 })
+
+def _name_gender(name: str) -> str | None:
+    """Return 'male', 'female', or None based on known-name lookup."""
+    if not name:
+        return None
+    first = name.strip().split()[0].lower()
+    if first in _KNOWN_FEMALE_NAMES:
+        return "female"
+    if first in _KNOWN_MALE_NAMES:
+        return "male"
+    return None
 
 class CharacterRegistry:
     def __init__(self, book_id: str):
         self.book_id = book_id
         self._chars: dict[str, Character] = {}
+        self._explicit: set[str] = set()  # names locked by CHARACTERS: block
 
     def _infer_gender(self, name: str, surrounding_text: str) -> Gender:
         """Infer gender: check known-name dict first, then pronoun window."""
@@ -143,6 +159,35 @@ class CharacterRegistry:
         if female_score > male_score:   return Gender.FEMALE
         return Gender.NEUTRAL
 
+    def register_explicit(self, name: str, gender_str: str) -> "Character":
+        """
+        Register a character with an explicitly declared gender (from CHARACTERS: block).
+        Marks the entry so it is never overwritten by pronoun-inference later.
+        """
+        gender_str = gender_str.lower()
+        gender_map = {
+            "male":    Gender.MALE,
+            "female":  Gender.FEMALE,
+            "neutral": Gender.NEUTRAL,
+            "m":       Gender.MALE,
+            "f":       Gender.FEMALE,
+            "n":       Gender.NEUTRAL,
+        }
+        gender = gender_map.get(gender_str, Gender.NEUTRAL)
+        if name not in self._chars:
+            self._chars[name] = Character(
+                book_id=self.book_id,
+                name=name,
+                gender=gender,
+                appearance_count=0,
+            )
+        else:
+            # Override any previously inferred gender with the explicit declaration
+            self._chars[name].gender = gender
+        self._explicit.add(name)
+        logger.debug(f"CHARACTERS block: '{name}' locked as {gender.value}")
+        return self._chars[name]
+
     def register(self, name: str, surrounding_text: str = "") -> Character:
         if name not in self._chars:
             gender = self._infer_gender(name, surrounding_text)
@@ -152,6 +197,9 @@ class CharacterRegistry:
                 gender=gender,
                 appearance_count=0,
             )
+        elif name not in self._explicit:
+            # Re-infer only if not explicitly declared — updates gender from new context
+            pass  # keep existing inference; avoid flipping on short windows
         char = self._chars[name]
         char.appearance_count += 1
         return char
@@ -204,6 +252,7 @@ def analyze_paragraph(
     chapter_idx: int,
     para_idx: int,
     registry: CharacterRegistry,
+    cross_para_state: "dict[str, str] | None" = None,
 ) -> list[TextSegment]:
     """
     Decompose a paragraph into TextSegments (narration + dialogue pieces).
@@ -215,7 +264,7 @@ def analyze_paragraph(
     # Split paragraph into dialogue / narration pieces
     # Build {name: gender} for pronoun resolution inside the parser
     _char_genders = {n: r.gender.value for n, r in registry._chars.items()}
-    parts = _split_dialogue_narration(paragraph, char_registry=_char_genders)
+    parts = _split_dialogue_narration(paragraph, char_registry=_char_genders, cross_para_state=cross_para_state)
 
     for part_type, content, speaker in parts:
         if not content.strip():
@@ -239,6 +288,7 @@ def analyze_paragraph(
 def _split_dialogue_narration(
     paragraph: str,
     char_registry: "dict[str, str] | None" = None,
+    cross_para_state: "dict[str, str] | None" = None,
 ) -> list[tuple[SegmentType, str, Optional[str]]]:
     """
     Split paragraph into ordered list of (SegmentType, text, speaker_or_None).
@@ -258,16 +308,16 @@ def _split_dialogue_narration(
     results: list[tuple[SegmentType, str, Optional[str]]] = []
     pos = 0
     text = paragraph
-    _last_speaker_by_gender: dict[str, str] = {}
+    _last_speaker_by_gender: dict[str, str] = dict(cross_para_state or {})
     _pending_continuation: "str | None" = None
 
     # Pre-seed gender tracker from char_registry (handles paragraphs that open with quotes)
     if char_registry:
         for _n, _dg in char_registry.items():
             _fn = _n.split()[0].lower()
-            if _fn in _KNOWN_FEMALE_NAMES:
+            if _fn in _KNOWN_FEMALE_NAMES or _dg == "female":
                 _last_speaker_by_gender.setdefault("female", _n)
-            elif _fn in _KNOWN_MALE_NAMES:
+            elif _fn in _KNOWN_MALE_NAMES or _dg == "male":
                 _last_speaker_by_gender.setdefault("male", _n)
 
     def _advance_tag(m_obj: re.Match, after_raw: str, after_start: int) -> "tuple[int, bool]":
@@ -342,7 +392,14 @@ def _split_dialogue_narration(
             before_text = text[pos:match.start()]
             sp_b = SPEAKER_BEFORE.search(before_text)
             if sp_b:
-                speaker = sp_b.group(1)
+                _candidate = sp_b.group(1)
+                # Ignore bare pronouns — resolve them via gender tracker
+                if _candidate.lower() in ("he", "she", "they", "it", "we", "i"):
+                    _pg = _PRONOUN_GENDER.get(_candidate.lower())
+                    if _pg and _pg in _last_speaker_by_gender:
+                        speaker = _last_speaker_by_gender[_pg]
+                else:
+                    speaker = _candidate
 
         if speaker:
             _update_gender(speaker)
@@ -377,14 +434,27 @@ def _split_dialogue_narration(
 def analyze_book(
     chapters_data: list[dict],
     book_id: str,
+    char_declarations: "dict[str, str] | None" = None,
 ) -> tuple[list[list[TextSegment]], CharacterRegistry]:
     """
     Analyze all chapters and return:
       - all_segments: list of chapter-segments (list[list[TextSegment]])
       - registry: CharacterRegistry with all discovered characters
+
+    char_declarations: optional {name: gender_str} from the CHARACTERS: block.
+    These are locked in with priority over any pronoun-based inference.
     """
     registry = CharacterRegistry(book_id)
     all_chapter_segments: list[list[TextSegment]] = []
+
+    # ── Pre-seed registry from CHARACTERS: block (highest priority) ──────────
+    if char_declarations:
+        for decl_name, decl_gender in char_declarations.items():
+            registry.register_explicit(decl_name, decl_gender)
+        logger.info(
+            f"Pre-seeded registry with {len(char_declarations)} declared characters: "
+            f"{list(char_declarations.keys())}"
+        )
 
     # First pass: NER over full text for better character discovery
     full_text = '\n'.join(
@@ -392,15 +462,28 @@ def analyze_book(
     )
     spacy_names = _extract_person_names_spacy(full_text)
     for name in spacy_names:
-        registry.register(name, full_text)
+        if name not in registry._explicit:   # don't overwrite declared characters
+            registry.register(name, full_text)
 
     # Second pass: per-paragraph segment extraction
+    _cross_para_state: dict[str, str] = {}  # carries gender context across paragraphs
+    # Build book-level char→gender for cross-para lookups
+    _char_genders_book: dict[str, str] = {c.name: c.gender.value for c in registry.all_characters() if c.gender}
     for ch_idx, chapter in enumerate(chapters_data):
         chapter_segments: list[TextSegment] = []
         for para_idx, paragraph in enumerate(chapter['paragraphs']):
             segs = analyze_paragraph(
-                paragraph, book_id, ch_idx, para_idx, registry
+                paragraph, book_id, ch_idx, para_idx, registry,
+                cross_para_state=_cross_para_state,
             )
+            # Update cross-paragraph gender state from this paragraph's speakers
+            for _seg in segs:
+                if _seg.speaker and _seg.speaker not in ("NARRATOR",):
+                    _sg = _name_gender(_seg.speaker)
+                    if not _sg and _char_genders_book.get(_seg.speaker):
+                        _sg = _char_genders_book[_seg.speaker]
+                    if _sg in ("male", "female"):
+                        _cross_para_state[_sg] = _seg.speaker
             chapter_segments.extend(segs)
         all_chapter_segments.append(chapter_segments)
         logger.debug(f"Chapter {ch_idx+1}: {len(chapter_segments)} segments")
@@ -421,12 +504,15 @@ def analyze_book(
 def process_chapters(
     chapters_raw: list[dict],
     book_id: str,
+    char_declarations: "dict[str, str] | None" = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Adapter called by pipeline.py.
 
     Accepts the raw chapter list from text_extraction:
         [{"title": str, "paragraphs": [str]}, ...]
+    and an optional char_declarations dict from the CHARACTERS: block:
+        {"CharName": "male"|"female"|"neutral", ...}
 
     Returns three flat lists of dicts ready for db.insert():
         chapters:   [Chapter.model_dump(), ...]
@@ -436,8 +522,8 @@ def process_chapters(
     from models.schemas import Chapter, EmotionTag
     from collections import Counter
 
-    # Run NLP
-    all_chapter_segs, registry = analyze_book(chapters_raw, book_id)
+    # Run NLP (pass character declarations for explicit gender locking)
+    all_chapter_segs, registry = analyze_book(chapters_raw, book_id, char_declarations=char_declarations)
 
     # ── Build chapter dicts ─────────────────────────────────────────────────
     chapter_dicts: list[dict] = []
@@ -473,3 +559,4 @@ def process_chapters(
     ]
 
     return chapter_dicts, character_dicts, segment_dicts
+feat: CharacterRegistry.register_explicit - lock gender from CHARACTERS block
