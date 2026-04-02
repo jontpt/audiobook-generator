@@ -45,21 +45,34 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
 
         # ─── 1. Text extraction ─────────────────────────────────────────────
         from services.text_extraction import extract_text
-        chapters_raw = extract_text(file_path)
+        # extract_text now returns (chapters, char_declarations)
+        chapters_raw, char_declarations = extract_text(file_path)
 
         if not chapters_raw:
             raise ValueError("No text could be extracted from the uploaded file.")
 
-        total_words = sum(len(c.get("text", "").split()) for c in chapters_raw)
+        # Log declared characters if present
+        if char_declarations:
+            logger.info(
+                f"[{book_id[:8]}] CHARACTERS block found: {list(char_declarations.keys())}"
+            )
+
+        total_words = sum(
+            sum(len(p.split()) for p in c.get("paragraphs", []))
+            for c in chapters_raw
+        )
         await db.update_by_id(db.books, book_id, {"total_words": total_words})
         await _update(book_id, "extracting", 0.12,
-                      f"Extracted {len(chapters_raw)} chapters, {total_words:,} words")
+                      f"Extracted {len(chapters_raw)} chapters, {total_words:,} words"
+                      + (f" ({len(char_declarations)} declared chars)" if char_declarations else ""))
 
         # ─── 2. NLP analysis ─────────────────────────────────────────────────
         await _update(book_id, "analyzing", 0.16, "Detecting characters & emotions…")
 
         from services.nlp_processor import process_chapters
-        chapters, characters, segments = process_chapters(chapters_raw, book_id)
+        chapters, characters, segments = process_chapters(
+            chapters_raw, book_id, char_declarations=char_declarations
+        )
 
         # Persist chapters
         for ch in chapters:
