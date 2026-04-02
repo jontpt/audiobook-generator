@@ -291,4 +291,4 @@ def extract_text(file_path: Path) -> tuple[list[dict], dict[str, str]]:
         + (f", {len(char_declarations)} declared characters" if char_declarations else "")
     )
     return chapters, char_declarations
-feat: CHARACTERS block support - parse explicit gender declarations
+
