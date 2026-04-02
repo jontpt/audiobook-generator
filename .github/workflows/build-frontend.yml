@@ -1,0 +1,46 @@
+name: Build Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'audiobook_frontend/src/**'
+      - 'audiobook_frontend/public/**'
+      - 'audiobook_frontend/index.html'
+      - 'audiobook_frontend/package.json'
+      - 'audiobook_frontend/vite.config.*'
+      - 'audiobook_frontend/tailwind.config.*'
+      - 'audiobook_frontend/tsconfig.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: audiobook_frontend
+        run: npm install
+
+      - name: Build
+        working-directory: audiobook_frontend
+        run: npm run build
+
+      - name: Commit rebuilt dist/
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add audiobook_frontend/dist/ -f
+          git diff --staged --quiet && echo "No changes to dist/" || \
+            git commit -m "chore: rebuild frontend dist [skip ci]" && git push
