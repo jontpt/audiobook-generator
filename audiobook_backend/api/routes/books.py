@@ -166,7 +166,10 @@ async def get_segments(book_id: str, chapter_index: int = None):
     segments = await db.search(db.segments, "book_id", book_id)
     if chapter_index is not None:
         segments = [s for s in segments if s.get("chapter_index") == chapter_index]
-    return sorted(segments, key=lambda s: (s.get("chapter_index", 0), s.get("paragraph_index", 0)))
+    return sorted(segments, key=lambda s: (
+        s.get("chapter_index", 0),
+        s.get("segment_index", s.get("paragraph_index", 0)),
+    ))
 
 
 @router.delete("/{book_id}", response_model=dict)

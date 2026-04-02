@@ -154,6 +154,15 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
             seg_obj = SimpleNamespace(**seg)
             segs_by_chapter[seg.get("chapter_index", 0)].append(seg_obj)
 
+        # Sort segments within each chapter by segment_index so that
+        # paragraph order AND within-paragraph dialogue order are preserved
+        # after the DB round-trip (DB does not guarantee insertion order).
+        for ch_key in segs_by_chapter:
+            segs_by_chapter[ch_key].sort(
+                key=lambda s: (getattr(s, "segment_index", 0),
+                               getattr(s, "paragraph_index", 0))
+            )
+
         # Assemble each chapter with granular per-segment progress callbacks
         chapter_paths = []
         loop          = asyncio.get_running_loop()

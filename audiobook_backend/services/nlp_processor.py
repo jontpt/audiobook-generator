@@ -552,11 +552,15 @@ def process_chapters(
     ]
 
     # ── Build segment dicts (flatten chapter lists) ─────────────────────────
-    segment_dicts: list[dict] = [
-        seg.model_dump()
-        for ch_segs in all_chapter_segs
-        for seg in ch_segs
-    ]
+    # Assign a monotonically increasing segment_index *within each chapter*
+    # so the audio mixer can restore exact paragraph+dialogue order after a
+    # DB round-trip (DB returns rows in undefined order; sort key below fixes it).
+    segment_dicts: list[dict] = []
+    for ch_segs in all_chapter_segs:
+        for ch_seg_idx, seg in enumerate(ch_segs):
+            d = seg.model_dump()
+            d["segment_index"] = ch_seg_idx  # 0-based position inside this chapter
+            segment_dicts.append(d)
 
     return chapter_dicts, character_dicts, segment_dicts
 

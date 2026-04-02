@@ -88,6 +88,7 @@ class TextSegment(BaseModel):
     book_id: str
     chapter_index: int
     paragraph_index: int
+    segment_index: int = 0            # Monotonic position within chapter (for stable ordering)
     segment_type: SegmentType
     speaker: Optional[str] = None     # Character name for dialogue
     text: str
