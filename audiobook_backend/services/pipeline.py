@@ -154,26 +154,51 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
             seg_obj = SimpleNamespace(**seg)
             segs_by_chapter[seg.get("chapter_index", 0)].append(seg_obj)
 
-        # Assemble each chapter
+        # Assemble each chapter with granular per-segment progress callbacks
         chapter_paths = []
-        for ch in chapters:
+        loop          = asyncio.get_running_loop()
+        num_chapters  = max(len(chapters), 1)
+
+        for ch_num, ch in enumerate(chapters):
             ch_idx   = ch.get("index", 0)
             ch_title = ch.get("title", f"Chapter {ch_idx + 1}")
             ch_segs  = segs_by_chapter.get(ch_idx, [])
             music_p  = music_tracks.get(ch.get("dominant_emotion", "neutral"))
-            ch_path  = await asyncio.get_event_loop().run_in_executor(
+
+            # Progress window for this chapter: 0.83 → 0.93 spread across chapters
+            ch_base  = 0.83 + (ch_num / num_chapters) * 0.10
+            ch_range = 0.10 / num_chapters
+
+            def _make_progress_cb(base: float, rng: float, bk_id: str):
+                """Return a thread-safe callback that fires _update on the event loop."""
+                def _cb(done: int, total: int) -> None:
+                    frac = done / max(total, 1)
+                    prog = base + frac * rng
+                    asyncio.run_coroutine_threadsafe(
+                        _update(bk_id, "mixing", round(prog, 4),
+                                f"Mixing segment {done}/{total}…"),
+                        loop,
+                    )
+                return _cb
+
+            ch_path = await loop.run_in_executor(
                 None,
                 assemble_chapter,
                 ch_segs, ch_title, book_id, ch_idx,
                 music_p, options.music_volume_db,
+                _make_progress_cb(ch_base, ch_range, book_id),  # progress callback
             )
             if ch_path:
                 chapter_paths.append(ch_path)
+            await _update(book_id, "mixing",
+                          round(0.83 + ((ch_num + 1) / num_chapters) * 0.10, 4),
+                          f"Chapter {ch_num + 1}/{num_chapters} mixed")
 
         # Merge all chapters into the final audiobook file
+        await _update(book_id, "mixing", 0.93, "Merging chapters…")
         book_record = await db.get_by_id(db.books, book_id)
         book_title  = book_record.get("title", "Audiobook") if book_record else "Audiobook"
-        export_path = await asyncio.get_event_loop().run_in_executor(
+        export_path = await loop.run_in_executor(
             None,
             merge_chapters,
             chapter_paths, book_id, book_title, "AudioBook Generator",
