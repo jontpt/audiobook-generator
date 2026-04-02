@@ -559,4 +559,4 @@ def process_chapters(
     ]
 
     return chapter_dicts, character_dicts, segment_dicts
-feat: CharacterRegistry.register_explicit - lock gender from CHARACTERS block
+
