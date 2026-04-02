@@ -32,6 +32,7 @@ async def upload_book(
     author: str = Form(default=""),
     add_music: bool = Form(default=False),
     export_format: str = Form(default="mp3"),
+    music_volume_db: float = Form(default=-18.0),   # ← NEW: range –30 (subtle) to –6 (loud)
 ):
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -41,6 +42,9 @@ async def upload_book(
     size_mb = len(content) / (1024 * 1024)
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(413, f"File too large ({size_mb:.1f} MB). Max: {MAX_FILE_SIZE_MB} MB")
+
+    # Clamp to safe range so a bad client value can't break the mixer
+    music_volume_db = max(-40.0, min(-3.0, music_volume_db))
 
     book_id   = str(uuid.uuid4())
     safe_name = f"{book_id}{ext}"
@@ -56,12 +60,13 @@ async def upload_book(
         status=ProcessingStatus.PENDING,
     )
     await db.insert(db.books, book.model_dump())
-    logger.info(f"Book uploaded: {book.title} ({size_mb:.2f} MB)")
+    logger.info(f"Book uploaded: {book.title} ({size_mb:.2f} MB, music={add_music}, vol={music_volume_db}dB)")
 
     from models.schemas import ProcessingOptions, ExportFormat
     options = ProcessingOptions(
         add_background_music=add_music,
         export_format=ExportFormat(export_format),
+        music_volume_db=music_volume_db,   # ← NEW
     )
 
     # Dispatch to Celery if configured, else use BackgroundTasks
@@ -108,11 +113,11 @@ async def book_progress_ws(websocket: WebSocket, book_id: str):
     book = await db.get_by_id(db.books, book_id)
     if book:
         await websocket.send_json({
-            "type":    "progress",
-            "book_id": book_id,
-            "status":  book.get("status"),
+            "type":     "progress",
+            "book_id":  book_id,
+            "status":   book.get("status"),
             "progress": book.get("progress", 0),
-            "message": "Connected",
+            "message":  "Connected",
         })
 
     try:
