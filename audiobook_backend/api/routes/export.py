@@ -21,6 +21,7 @@ async def trigger_export(
     background_tasks: BackgroundTasks,
     export_format: str = "mp3",
     add_music: bool = False,
+    music_volume_db: float = -18.0,   # ← NEW: range –30 (subtle) to –6 (loud)
 ):
     book = await db.get_by_id(db.books, book_id)
     if not book:
@@ -31,10 +32,14 @@ async def trigger_export(
     if not file_path_str or not Path(file_path_str).exists():
         raise HTTPException(400, "Source file no longer available. Please re-upload.")
 
+    # Clamp to safe range
+    music_volume_db = max(-40.0, min(-3.0, music_volume_db))
+
     from models.schemas import ProcessingOptions, ExportFormat
     options = ProcessingOptions(
         export_format=ExportFormat(export_format),
         add_background_music=add_music,
+        music_volume_db=music_volume_db,   # ← NEW
     )
     await db.update_by_id(db.books, book_id, {
         "status": "pending", "progress": 0.0,
@@ -50,12 +55,29 @@ async def trigger_export(
     return {"success": True, "message": "Re-export started", "book_id": book_id}
 
 
-async def _rerun(book_id, file_path, options):
+async def _rerun(book_id: str, file_path: Path, options):
+    """
+    Re-run the full pipeline for a book.
+    Deletes stale segments + chapters first (they'll be regenerated),
+    but intentionally keeps character records so user voice choices survive.
+    """
     try:
+        # Clean stale segments
+        for seg in await db.search(db.segments, "book_id", book_id):
+            await db.delete_by_id(db.segments, seg["id"])
+
+        # Clean stale chapters
+        for ch in await db.search(db.chapters, "book_id", book_id):
+            await db.delete_by_id(db.chapters, ch["id"])
+
+        # NOTE: do NOT delete characters — they hold user voice assignments.
+        # pipeline.py Step 3 will read them and keep the voice_ids intact.
+
         from services.pipeline import run_pipeline
         await run_pipeline(book_id, file_path, options)
+
     except Exception as e:
-        logger.error(f"Re-export failed: {e}")
+        logger.error(f"Re-export failed for {book_id}: {e}", exc_info=True)
 
 
 @router.get("/{book_id}/status", response_model=dict)
