@@ -26,19 +26,38 @@ QUOTE_PATTERN = re.compile(
     re.DOTALL
 )
 
-# Speaker attribution: "he said", "Alice whispered", "said John" etc.
-SPEAKER_AFTER  = re.compile(
-    r'[""»,]\s*(?:said|asked|whispered|shouted|exclaimed|replied|cried|'
-    r'muttered|answered|called|breathed|snapped|groaned|laughed|sighed|'
-    r'stated|remarked|added|continued|interrupted|insisted)\s+([A-Z][a-z]+)',
-    re.IGNORECASE
+_SPEECH_VERBS = (
+    r"(?:said|asked|whispered|shouted|exclaimed|replied|cried|muttered|"
+    r"answered|called|breathed|snapped|groaned|laughed|sighed|stated|"
+    r"remarked|added|continued|interrupted|insisted)"
 )
+
+# ── speaker attribution patterns (anchored to start of after-text) ────────
+# A: "Name verb"  e.g.  Sarah replied  /  Marcus said
+SPEECH_TAG_NAME_VERB = re.compile(
+    r"^\s*[,.]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+" + _SPEECH_VERBS,
+)
+# B: "verb Name"  e.g.  said Marcus
+SPEECH_TAG_VERB_NAME = re.compile(
+    r"^\s*[,.]?\s*" + _SPEECH_VERBS + r"\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+)
+# C: pronoun + verb  e.g.  he said  /  she whispered
+SPEECH_TAG_PRONOUN = re.compile(
+    r"^\s*[,.]?\s*(he|she|they)\s+" + _SPEECH_VERBS,
+    re.IGNORECASE,
+)
+# Fallback: "Name verb" anywhere in unprocessed before-text
 SPEAKER_BEFORE = re.compile(
-    r'([A-Z][a-z]+)\s+(?:said|asked|whispered|shouted|exclaimed|replied|'
-    r'cried|muttered|answered|called|snapped|groaned|laughed|sighed|stated|'
-    r'remarked|added|continued|interrupted|insisted)\s*[,:]?',
-    re.IGNORECASE
+    r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+" + _SPEECH_VERBS + r"\s*[,:]?",
 )
+SPEAKER_AFTER = SPEAKER_BEFORE  # alias for backward compatibility
+
+_PRONOUN_GENDER: dict[str, str] = {
+    "he": "male", "him": "male",
+    "she": "female", "her": "female",
+    "they": "neutral",
+}
+_SPEECH_TAG_WINDOW = 90
 PRONOUN_MAP = {
     'he': Gender.MALE, 'him': Gender.MALE, 'his': Gender.MALE,
     'she': Gender.FEMALE, 'her': Gender.FEMALE, 'hers': Gender.FEMALE,
@@ -162,7 +181,9 @@ def analyze_paragraph(
     emotion = _detect_emotion(paragraph)
 
     # Split paragraph into dialogue / narration pieces
-    parts = _split_dialogue_narration(paragraph)
+    # Build {name: gender} for pronoun resolution inside the parser
+    _char_genders = {n: r.gender.value for n, r in registry._chars.items()}
+    parts = _split_dialogue_narration(paragraph, char_registry=_char_genders)
 
     for part_type, content, speaker in parts:
         if not content.strip():
@@ -185,44 +206,103 @@ def analyze_paragraph(
 
 def _split_dialogue_narration(
     paragraph: str,
+    char_registry: "dict[str, str] | None" = None,
 ) -> list[tuple[SegmentType, str, Optional[str]]]:
     """
-    Split paragraph into ordered list of (type, text, speaker).
+    Split paragraph into ordered list of (SegmentType, text, speaker_or_None).
+
+    Priority order for speaker detection on each closing quote:
+      1. "Name verb"  immediately after closing quote  (e.g. Sarah replied)
+      2. "verb Name"  immediately after closing quote  (e.g. said Marcus)
+      3. pronoun + verb after quote  → resolved via per-gender tracker
+      4. Continuation: previous speech tag ended with comma → same speaker
+      5. "Name verb" in unprocessed narration between last pos and this quote
+
+    Speech tags are consumed (pos advanced) so they do NOT re-appear as
+    orphaned NARRATION segments that would be read in the narrator voice.
+
+    char_registry: optional {name: gender_str} for pronoun resolution.
     """
     results: list[tuple[SegmentType, str, Optional[str]]] = []
     pos = 0
     text = paragraph
+    _last_speaker_by_gender: dict[str, str] = {}
+    _pending_continuation: "str | None" = None
+
+    def _advance_tag(m_obj: re.Match, after_raw: str, after_start: int) -> "tuple[int, bool]":
+        tail = after_raw[m_obj.end():]
+        cm = re.search(r"([,])|([.!?])|(?=[\"\u201c])", tail)
+        if cm:
+            return after_start + m_obj.end() + cm.end(), bool(cm.group(1))
+        return after_start + len(after_raw), after_raw.rstrip().endswith(",")
+
+    def _update_gender(name: str) -> None:
+        if char_registry:
+            g = char_registry.get(name)
+            if g:
+                _last_speaker_by_gender[g] = name
 
     for match in QUOTE_PATTERN.finditer(text):
-        # Narration before this quote
         before = text[pos:match.start()].strip()
         if before:
-            speaker_m = SPEAKER_BEFORE.search(before)
             results.append((SegmentType.NARRATION, before, None))
+            if char_registry:
+                for cname in char_registry:
+                    if cname in before:
+                        _update_gender(cname)
 
-        # The quoted dialogue
         dialogue = match.group(1) or match.group(2) or ""
-        # Try to find speaker after this dialogue
         after_start = match.end()
-        after_text = text[after_start:after_start + 80]
-        speaker_m = SPEAKER_AFTER.search(text[max(0, match.start()-5):after_start+80])
-        speaker = speaker_m.group(1) if speaker_m else None
+        next_q = QUOTE_PATTERN.search(text, after_start)
+        win_end = next_q.start() if next_q else after_start + _SPEECH_TAG_WINDOW
+        after_raw = text[after_start:min(win_end, after_start + _SPEECH_TAG_WINDOW)]
 
-        # Fallback: look for "Name said/asked" before the quote
+        speaker: "str | None" = None
+        tag_end = after_start
+        tag_comma = False
+
+        m = SPEECH_TAG_NAME_VERB.match(after_raw)
+        if m:
+            speaker = m.group(1)
+            tag_end, tag_comma = _advance_tag(m, after_raw, after_start)
+
         if not speaker:
-            before_text = text[max(0, match.start()-60):match.start()]
-            sp_before = SPEAKER_BEFORE.search(before_text)
-            speaker = sp_before.group(1) if sp_before else None
+            m = SPEECH_TAG_VERB_NAME.match(after_raw)
+            if m:
+                speaker = m.group(1)
+                tag_end, tag_comma = _advance_tag(m, after_raw, after_start)
+
+        if not speaker:
+            m = SPEECH_TAG_PRONOUN.match(after_raw)
+            if m:
+                pronoun = m.group(1).lower()
+                gender = _PRONOUN_GENDER.get(pronoun)
+                if gender and gender in _last_speaker_by_gender:
+                    speaker = _last_speaker_by_gender[gender]
+                    tag_end, tag_comma = _advance_tag(m, after_raw, after_start)
+
+        if not speaker and _pending_continuation:
+            speaker = _pending_continuation
+
+        if not speaker:
+            before_text = text[pos:match.start()]
+            sp_b = SPEAKER_BEFORE.search(before_text)
+            if sp_b:
+                speaker = sp_b.group(1)
+
+        if speaker:
+            _update_gender(speaker)
+
+        if tag_end > after_start:
+            _pending_continuation = speaker if tag_comma else None
 
         results.append((SegmentType.DIALOGUE, dialogue, speaker))
-        pos = match.end()
+        pos = tag_end if tag_end > after_start else match.end()
 
-    # Remaining narration after last quote
     tail = text[pos:].strip()
     if tail:
         results.append((SegmentType.NARRATION, tail, None))
 
-    # If no dialogue found, entire paragraph is narration
     if not results:
         results.append((SegmentType.NARRATION, paragraph.strip(), None))
 
