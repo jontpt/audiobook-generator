@@ -52,6 +52,7 @@ def assemble_chapter(
     chapter_index: int,
     music_path: Optional[Path] = None,
     music_volume_db: float = None,
+    progress_callback=None,  # Optional[Callable[[int, int], None]] — called as cb(done, total)
 ) -> Optional[Path]:
     """
     Assemble all segment audio files for one chapter into a single MP3.
@@ -73,11 +74,18 @@ def assemble_chapter(
             logger.warning(f"Chapter {chapter_index}: no valid audio segments")
             return None
 
-        for seg in valid_segments:
+        total_valid = len(valid_segments)
+        for seg_i, seg in enumerate(valid_segments):
             try:
                 audio = AudioSegment.from_file(seg.audio_path)
                 # Add slight pause between dialogue turns
                 narration += audio + speech_pause
+                # Report mixing progress every 5 segments or at the end
+                if progress_callback and (seg_i % 5 == 0 or seg_i == total_valid - 1):
+                    try:
+                        progress_callback(seg_i + 1, total_valid)
+                    except Exception:
+                        pass  # never let a callback crash the mixer
             except Exception as e:
                 logger.warning(f"Skipping segment {seg.id}: {e}")
                 continue
