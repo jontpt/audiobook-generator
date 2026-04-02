@@ -1,7 +1,21 @@
 """
 services/text_extraction.py
 Handles extraction of raw text from PDF, DOCX, ePub, and plain-text files.
-Returns a list of chapters: [{"title": str, "paragraphs": [str]}]
+Returns a tuple:
+  (list[dict], dict[str, str])
+  ├─ list[dict]   → chapters: [{"title": str, "paragraphs": [str]}, ...]
+  └─ dict[str,str]→ char_declarations: {"CharName": "male"|"female"|"neutral", ...}
+                    (empty dict when no CHARACTERS: block is present)
+
+CHARACTERS block format (place anywhere at top of file, before the story):
+──────────────────────────────────────────────
+CHARACTERS:
+Spade: male
+Wonderly: female
+Effie: female
+Archer: male
+END CHARACTERS
+──────────────────────────────────────────────
 """
 from __future__ import annotations
 import re
@@ -9,6 +23,54 @@ import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# ── CHARACTERS block parser ───────────────────────────────────────────────────
+# Matches the entire CHARACTERS: ... END CHARACTERS block (case-insensitive,
+# with or without the END CHARACTERS terminator — falls back to blank-line end).
+
+_CHAR_BLOCK_RE = re.compile(
+    r'CHARACTERS\s*:\s*\n'           # opening line
+    r'(.*?)'                          # content (non-greedy)
+    r'(?:END\s+CHARACTERS\s*(?:\n|$)|(?:\n{2,}|\Z))',  # closing: explicit end or blank line
+    re.IGNORECASE | re.DOTALL
+)
+_CHAR_LINE_RE = re.compile(
+    r'^\s*([A-Za-z][A-Za-z\s\'\-\.]+?)\s*:\s*(male|female|neutral|m|f|n)\s*$',
+    re.IGNORECASE
+)
+_GENDER_ALIASES: dict[str, str] = {
+    "m": "male", "f": "female", "n": "neutral",
+    "male": "male", "female": "female", "neutral": "neutral",
+}
+
+
+def _parse_char_declarations(raw_text: str) -> tuple[dict[str, str], str]:
+    """
+    Extract the CHARACTERS: block from raw_text.
+    Returns (declarations_dict, cleaned_text_without_block).
+    declarations_dict maps CharName → "male"|"female"|"neutral".
+    If no block is found returns ({}, raw_text unchanged).
+    """
+    m = _CHAR_BLOCK_RE.search(raw_text)
+    if not m:
+        return {}, raw_text
+
+    block_content = m.group(1)
+    declarations: dict[str, str] = {}
+    for line in block_content.splitlines():
+        lm = _CHAR_LINE_RE.match(line)
+        if lm:
+            name   = lm.group(1).strip()
+            gender = _GENDER_ALIASES.get(lm.group(2).strip().lower(), "neutral")
+            declarations[name] = gender
+            logger.debug(f"CHARACTERS block: {name!r} → {gender}")
+
+    # Remove the entire block from the text so it doesn't pollute chapters
+    cleaned = raw_text[:m.start()] + raw_text[m.end():]
+    if declarations:
+        logger.info(f"Parsed CHARACTERS block: {list(declarations.keys())}")
+    return declarations, cleaned
+
 
 # ── Chapter detection patterns ───────────────────────────────────────────────
 CHAPTER_PATTERNS = [
@@ -81,7 +143,7 @@ def _split_into_chapters(raw_text: str) -> list[dict]:
 
 # ── PDF ──────────────────────────────────────────────────────────────────────
 
-def extract_from_pdf(file_path: Path) -> list[dict]:
+def extract_from_pdf(file_path: Path) -> tuple[list[dict], dict[str, str]]:
     try:
         import fitz  # PyMuPDF
         doc = fitz.open(str(file_path))
@@ -90,7 +152,8 @@ def extract_from_pdf(file_path: Path) -> list[dict]:
             pages_text.append(page.get_text("text"))
         doc.close()
         raw = '\n'.join(pages_text)
-        return _split_into_chapters(raw)
+        char_decls, cleaned = _parse_char_declarations(raw)
+        return _split_into_chapters(cleaned), char_decls
     except ImportError:
         logger.warning("PyMuPDF not installed, falling back to basic PDF reading")
         return _fallback_pdf(file_path)
@@ -99,22 +162,33 @@ def extract_from_pdf(file_path: Path) -> list[dict]:
         raise
 
 
-def _fallback_pdf(file_path: Path) -> list[dict]:
+def _fallback_pdf(file_path: Path) -> tuple[list[dict], dict[str, str]]:
     """Minimal fallback using pdfminer if available."""
     try:
-        from pdfminer.high_level import extract_text
-        raw = extract_text(str(file_path))
-        return _split_into_chapters(raw)
+        from pdfminer.high_level import extract_text as pm_extract
+        raw = pm_extract(str(file_path))
+        char_decls, cleaned = _parse_char_declarations(raw)
+        return _split_into_chapters(cleaned), char_decls
     except Exception as e:
         raise RuntimeError(f"Cannot extract PDF text: {e}")
 
 
 # ── DOCX ─────────────────────────────────────────────────────────────────────
 
-def extract_from_docx(file_path: Path) -> list[dict]:
+def extract_from_docx(file_path: Path) -> tuple[list[dict], dict[str, str]]:
     try:
         from docx import Document
         doc = Document(str(file_path))
+        # First pass: collect all paragraph text and check for CHARACTERS block
+        all_text = '\n'.join(p.text for p in doc.paragraphs)
+        char_decls, _ = _parse_char_declarations(all_text)
+
+        # Build a set of lines that are inside the CHARACTERS block (to skip)
+        char_block_lines: set[str] = set()
+        m = _CHAR_BLOCK_RE.search(all_text)
+        if m:
+            char_block_lines = {ln.strip() for ln in m.group(0).splitlines() if ln.strip()}
+
         chapters: list[dict] = []
         current_title = "Chapter 1"
         current_paras: list[str] = []
@@ -122,6 +196,9 @@ def extract_from_docx(file_path: Path) -> list[dict]:
         for para in doc.paragraphs:
             text = para.text.strip()
             if not text:
+                continue
+            # Skip lines belonging to the CHARACTERS block
+            if text in char_block_lines:
                 continue
             # Use heading styles as chapter breaks
             if para.style.name.startswith('Heading 1') or _is_chapter_heading(text):
@@ -135,8 +212,10 @@ def extract_from_docx(file_path: Path) -> list[dict]:
         if current_paras:
             chapters.append({"title": current_title, "paragraphs": current_paras})
 
-        return chapters if chapters else _split_into_chapters(
-            '\n'.join(p.text for p in Document(str(file_path)).paragraphs))
+        if not chapters:
+            chapters = _split_into_chapters(all_text)
+
+        return chapters, char_decls
     except Exception as e:
         logger.error(f"DOCX extraction error: {e}")
         raise
@@ -144,7 +223,7 @@ def extract_from_docx(file_path: Path) -> list[dict]:
 
 # ── ePub ─────────────────────────────────────────────────────────────────────
 
-def extract_from_epub(file_path: Path) -> list[dict]:
+def extract_from_epub(file_path: Path) -> tuple[list[dict], dict[str, str]]:
     try:
         import ebooklib
         from ebooklib import epub
@@ -152,6 +231,7 @@ def extract_from_epub(file_path: Path) -> list[dict]:
 
         book = epub.read_epub(str(file_path))
         chapters: list[dict] = []
+        all_char_decls: dict[str, str] = {}
 
         for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
             soup = BeautifulSoup(item.get_content(), 'html.parser')
@@ -159,11 +239,16 @@ def extract_from_epub(file_path: Path) -> list[dict]:
             heading = soup.find(['h1', 'h2', 'h3'])
             title = heading.get_text().strip() if heading else f"Chapter {len(chapters)+1}"
             # Extract paragraphs
-            paras = [p.get_text().strip() for p in soup.find_all('p') if p.get_text().strip()]
+            raw_paras = [p.get_text().strip() for p in soup.find_all('p') if p.get_text().strip()]
+            # Parse CHARACTERS block from this section's text
+            section_text = '\n'.join(raw_paras)
+            char_decls, cleaned_text = _parse_char_declarations(section_text)
+            all_char_decls.update(char_decls)
+            paras = [p.strip() for p in cleaned_text.split('\n') if p.strip()]
             if paras:
                 chapters.append({"title": title, "paragraphs": paras})
 
-        return chapters
+        return chapters, all_char_decls
     except Exception as e:
         logger.error(f"ePub extraction error: {e}")
         raise
@@ -171,17 +256,22 @@ def extract_from_epub(file_path: Path) -> list[dict]:
 
 # ── Plain text ────────────────────────────────────────────────────────────────
 
-def extract_from_txt(file_path: Path) -> list[dict]:
+def extract_from_txt(file_path: Path) -> tuple[list[dict], dict[str, str]]:
     raw = file_path.read_text(encoding='utf-8', errors='replace')
-    return _split_into_chapters(raw)
+    char_decls, cleaned = _parse_char_declarations(raw)
+    return _split_into_chapters(cleaned), char_decls
 
 
 # ── Dispatcher ───────────────────────────────────────────────────────────────
 
-def extract_text(file_path: Path) -> list[dict]:
+def extract_text(file_path: Path) -> tuple[list[dict], dict[str, str]]:
     """
-    Main entry point. Detect file type and extract chapters.
-    Returns: list of {"title": str, "paragraphs": [str]}
+    Main entry point. Detect file type and extract chapters + character declarations.
+
+    Returns:
+        (chapters, char_declarations)
+        chapters:          list of {"title": str, "paragraphs": [str]}
+        char_declarations: {"CharName": "male"|"female"|"neutral"} (may be empty)
     """
     ext = file_path.suffix.lower()
     extractors = {
@@ -195,6 +285,10 @@ def extract_text(file_path: Path) -> list[dict]:
         raise ValueError(f"Unsupported file type: {ext}")
 
     logger.info(f"Extracting text from {file_path.name} ({ext})")
-    chapters = extractor(file_path)
-    logger.info(f"Extracted {len(chapters)} chapters")
-    return chapters
+    chapters, char_declarations = extractor(file_path)
+    logger.info(
+        f"Extracted {len(chapters)} chapters"
+        + (f", {len(char_declarations)} declared characters" if char_declarations else "")
+    )
+    return chapters, char_declarations
+feat: CHARACTERS block support - parse explicit gender declarations
