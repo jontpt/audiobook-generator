@@ -27,12 +27,16 @@ export const booksApi = {
     file: File,
     title: string,
     author: string,
-    onProgress?: (pct: number) => void
+    onProgress?: (pct: number) => void,
+    addMusic: boolean = false,
+    exportFormat: string = 'mp3',
   ) => {
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
     form.append('author', author);
+    form.append('add_music', String(addMusic));
+    form.append('export_format', exportFormat);
     const res = await apiClient.post('/books/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => {
@@ -47,9 +51,9 @@ export const booksApi = {
     return res.data;
   },
 
-  reExport: async (id: string, format: string = 'mp3') => {
+  reExport: async (id: string, format: string = 'mp3', addMusic: boolean = false) => {
     const res = await apiClient.post(`/export/${id}`, null, {
-      params: { export_format: format },
+      params: { export_format: format, add_music: addMusic },
     });
     return res.data;
   },
