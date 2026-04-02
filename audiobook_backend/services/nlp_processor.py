@@ -29,7 +29,9 @@ QUOTE_PATTERN = re.compile(
 _SPEECH_VERBS = (
     r"(?:said|asked|whispered|shouted|exclaimed|replied|cried|muttered|"
     r"answered|called|breathed|snapped|groaned|laughed|sighed|stated|"
-    r"remarked|added|continued|interrupted|insisted)"
+    r"remarked|added|continued|interrupted|insisted|began|demanded|"
+    r"told|warned|murmured|growled|pleaded|urged|noted|declared|"
+    r"responded|announced|questioned|admitted|confessed|suggested)"
 )
 
 # ── speaker attribution patterns (anchored to start of after-text) ────────
@@ -93,14 +95,44 @@ def _detect_emotion(text: str) -> EmotionTag:
 # Character registry builder
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Known-name gender lookup (checked before pronoun counting) ───────────
+_KNOWN_FEMALE_NAMES: frozenset[str] = frozenset({
+    "sarah", "emma", "alice", "anna", "mary", "jane", "emily",
+    "elizabeth", "rachel", "jessica", "lisa", "jennifer", "sophia",
+    "olivia", "ava", "isabella", "mia", "charlotte", "amelia",
+    "lily", "grace", "chloe", "victoria", "diana", "claire",
+    "helen", "kate", "amy", "julia", "laura", "amanda", "rebecca",
+    "natalie", "michelle", "katherine", "caroline", "eleanor",
+    "abigail", "madison", "hannah", "samantha", "stephanie",
+    "patricia", "sandra", "melissa", "donna", "carol", "ruth",
+    "sharon", "deborah", "virginia", "maria", "margaret", "dorothy",
+})
+_KNOWN_MALE_NAMES: frozenset[str] = frozenset({
+    "marcus", "james", "john", "david", "michael", "robert",
+    "thomas", "william", "richard", "charles", "george", "henry",
+    "daniel", "matthew", "joseph", "peter", "andrew", "paul",
+    "mark", "christopher", "alex", "alexander", "sam", "samuel",
+    "jack", "jake", "ryan", "luke", "adam", "ben", "benjamin",
+    "ethan", "noah", "liam", "mason", "logan", "lucas", "oliver",
+    "aiden", "elijah", "harry", "edward", "arthur", "alfred",
+    "frank", "fred", "eric", "kevin", "brian", "justin", "sean",
+    "patrick", "ian", "alan", "scott", "keith", "carl", "roger",
+})
+
 class CharacterRegistry:
     def __init__(self, book_id: str):
         self.book_id = book_id
         self._chars: dict[str, Character] = {}
 
     def _infer_gender(self, name: str, surrounding_text: str) -> Gender:
-        """Infer gender from surrounding pronouns."""
-        # Look 100 chars around the name
+        """Infer gender: check known-name dict first, then pronoun window."""
+        # 1. Fast lookup by first name
+        first = name.split()[0].lower()
+        if first in _KNOWN_FEMALE_NAMES:
+            return Gender.FEMALE
+        if first in _KNOWN_MALE_NAMES:
+            return Gender.MALE
+        # 2. Pronoun-count fallback
         idx = surrounding_text.lower().find(name.lower())
         if idx == -1:
             return Gender.NEUTRAL
@@ -229,17 +261,39 @@ def _split_dialogue_narration(
     _last_speaker_by_gender: dict[str, str] = {}
     _pending_continuation: "str | None" = None
 
+    # Pre-seed gender tracker from char_registry (handles paragraphs that open with quotes)
+    if char_registry:
+        for _n, _dg in char_registry.items():
+            _fn = _n.split()[0].lower()
+            if _fn in _KNOWN_FEMALE_NAMES:
+                _last_speaker_by_gender.setdefault("female", _n)
+            elif _fn in _KNOWN_MALE_NAMES:
+                _last_speaker_by_gender.setdefault("male", _n)
+
     def _advance_tag(m_obj: re.Match, after_raw: str, after_start: int) -> "tuple[int, bool]":
         tail = after_raw[m_obj.end():]
         cm = re.search(r"([,])|([.!?])|(?=[\"\u201c])", tail)
         if cm:
-            return after_start + m_obj.end() + cm.end(), bool(cm.group(1))
+            tag_end = after_start + m_obj.end() + cm.end()
+            is_comma = bool(cm.group(1))
+            # Treat "verb. <quote>" as continuation (same speaker continues)
+            if not is_comma and cm.group(2):
+                rest = tail[cm.end():].lstrip()
+                is_comma = bool(rest and rest[0] in '\"\"\u201c')
+            return tag_end, is_comma
         return after_start + len(after_raw), after_raw.rstrip().endswith(",")
 
     def _update_gender(name: str) -> None:
-        if char_registry:
-            g = char_registry.get(name)
-            if g:
+        # Name-dict takes priority over DB gender (fixes mis-labeled characters)
+        _first = name.split()[0].lower()
+        if _first in _KNOWN_FEMALE_NAMES:
+            _last_speaker_by_gender["female"] = name
+        elif _first in _KNOWN_MALE_NAMES:
+            _last_speaker_by_gender["male"] = name
+        else:
+            # Fall back to DB gender if name not in known sets
+            g = char_registry.get(name) if char_registry else None
+            if g and g not in ("neutral", "unknown"):
                 _last_speaker_by_gender[g] = name
 
     for match in QUOTE_PATTERN.finditer(text):
@@ -294,7 +348,14 @@ def _split_dialogue_narration(
             _update_gender(speaker)
 
         if tag_end > after_start:
-            _pending_continuation = speaker if tag_comma else None
+            # Also treat "verb. <quote>" as continuation:
+            # if tag ends with period and next non-space is a quote, same speaker continues
+            effective_comma = tag_comma
+            if not tag_comma and speaker:
+                _rest = text[tag_end:].lstrip()
+                if _rest and _rest[0] in '\"\"\u201c':
+                    effective_comma = True
+            _pending_continuation = speaker if effective_comma else None
 
         results.append((SegmentType.DIALOGUE, dialogue, speaker))
         pos = tag_end if tag_end > after_start else match.end()
