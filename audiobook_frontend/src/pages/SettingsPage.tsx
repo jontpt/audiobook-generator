@@ -1,1 +1,309 @@
-aW1wb3J0IFJlYWN0LCB7IHVzZVN0YXRlIH0gZnJvbSAncmVhY3QnOwppbXBvcnQgeyB1c2VRdWVyeSwgdXNlTXV0YXRpb24sIHVzZVF1ZXJ5Q2xpZW50IH0gZnJvbSAnQHRhbnN0YWNrL3JlYWN0LXF1ZXJ5JzsKaW1wb3J0IHsgbW90aW9uLCBBbmltYXRlUHJlc2VuY2UgfSBmcm9tICdmcmFtZXItbW90aW9uJzsKaW1wb3J0IHsgCiAgS2V5LCBQbHVzLCBUcmFzaDIsIENoZWNrQ2lyY2xlMiwgWENpcmNsZSwgRXllLCBFeWVPZmYsIAogIFVzZXIsIExvY2ssIFNoaWVsZCwgWmFwLCBSZWZyZXNoQ3csIAp9IGZyb20gJ2x1Y2lkZS1yZWFjdCc7CmltcG9ydCB7IHNldHRpbmdzQXBpIH0gZnJvbSAnLi4vYXBpL3NldHRpbmdzJzsKaW1wb3J0IHsgYXV0aEFwaSB9IGZyb20gJy4uL2FwaS9hdXRoJzsKaW1wb3J0IHsgdXNlQXV0aCB9IGZyb20gJy4uL2NvbnRleHRzL0F1dGhDb250ZXh0JzsKaW1wb3J0IHsgQnV0dG9uIH0gZnJvbSAnLi4vY29tcG9uZW50cy9VSS9CdXR0b24nOwppbXBvcnQgeyBJbnB1dCB9IGZyb20gJy4uL2NvbXBvbmVudHMvVUkvSW5wdXQnOwppbXBvcnQgeyBNb2RhbCB9IGZyb20gJy4uL2NvbXBvbmVudHMvVUkvTW9kYWwnOwppbXBvcnQgdHlwZSB7IEFwaUtleSB9IGZyb20gJy4uL3R5cGVzJzsKaW1wb3J0IHRvYXN0IGZyb20gJ3JlYWN0LWhvdC10b2FzdCc7Cgpjb25zdCBTRVJWSUNFX01FVEE6IFJlY29yZDxzdHJpbmcsIHsgbmFtZTogc3RyaW5nOyBpY29uOiBzdHJpbmc7IGNvbG9yOiBzdHJpbmc7IGhpbnQ6IHN0cmluZyB9PiA9IHsKICBlbGV2ZW5sYWJzOiB7IG5hbWU6ICdFbGV2ZW5MYWJzJywgaWNvbjogJ/CfjpnvuI8nLCBjb2xvcjogJ3RleHQtYnJhbmQtNDAwJywgICAgaGludDogJ3NrLS4uLicgfSwKICBtdWJlcnQ6ICAgICB7IG5hbWU6ICdNdWJlcnQnLCAgICAgaWNvbjogJ/CfjrUnLCBjb2xvcjogJ3RleHQtYWNjZW50LXRlYWwnLCAgaGludDogJ1lvdXIgTXViZXJ0IEFQSSB0b2tlbicgfSwKICBzb3VuZHJhdzogICB7IG5hbWU6ICdTb3VuZHJhdycsICAgaWNvbjogJ/CfjrYnLCBjb2xvcjogJ3RleHQtYWNjZW50LWFtYmVyJywgaGludDogJ1lvdXIgU291bmRyYXcgQVBJIGtleScgfSwKfTsKCmV4cG9ydCBjb25zdCBTZXR0aW5nc1BhZ2U6IFJlYWN0LkZDID0gKCkgPT4gewogIGNvbnN0IHsgdXNlciB9ID0gdXNlQXV0aCgpOwogIGNvbnN0IHF1ZXJ5Q2xpZW50ID0gdXNlUXVlcnlDbGllbnQoKTsKCiAgLy8g4pSA4pSAIEFQSSBLZXlzIHN0YXRlIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAogIGNvbnN0IFthZGRLZXlNb2RhbCwgc2V0QWRkS2V5TW9kYWxdID0gdXNlU3RhdGUoZmFsc2UpOwogIGNvbnN0IFtuZXdLZXksIHNldE5ld0tleV0gICAgICAgICAgID0gdXNlU3RhdGUoeyBzZXJ2aWNlOiAnZWxldmVubGFicycsIGxhYmVsOiAnJywga2V5OiAnJyB9KTsKICBjb25zdCBbc2hvd0tleSwgc2V0U2hvd0tleV0gICAgICAgICA9IHVzZVN0YXRlKGZhbHNlKTsKCiAgLy8g4pSA4pSAIFBhc3N3b3JkIGNoYW5nZSBzdGF0ZSDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAKICBjb25zdCBbcHdkRm9ybSwgc2V0UHdkRm9ybV0gICAgID0gdXNlU3RhdGUoeyBjdXJyZW50OiAnJywgbmV4dDogJycsIGNvbmZpcm06ICcnIH0pOwogIGNvbnN0IFtzaG93UHdkcywgc2V0U2hvd1B3ZHNdICAgPSB1c2VTdGF0ZShmYWxzZSk7CiAgY29uc3QgW3B3ZExvYWRpbmcsIHNldFB3ZExvYWRpbmddID0gdXNlU3RhdGUoZmFsc2UpOwoKICBjb25zdCB7IGRhdGE6IGFwaUtleXMgPSBbXSwgaXNMb2FkaW5nOiBrZXlzTG9hZGluZyB9ID0gdXNlUXVlcnkoewogICAgcXVlcnlLZXk6IFsnYXBpLWtleXMnXSwKICAgIHF1ZXJ5Rm46IHNldHRpbmdzQXBpLmdldEFwaUtleXMsCiAgfSk7CgogIGNvbnN0IGFkZEtleU11dGF0aW9uID0gdXNlTXV0YXRpb24oewogICAgbXV0YXRpb25GbjogKCkgPT4gc2V0dGluZ3NBcGkuYWRkQXBpS2V5KG5ld0tleS5zZXJ2aWNlLCBuZXdLZXkubGFiZWwsIG5ld0tleS5rZXkpLAogICAgb25TdWNjZXNzOiAoKSA9PiB7CiAgICAgIHF1ZXJ5Q2xpZW50LmludmFsaWRhdGVRdWVyaWVzKHsgcXVlcnlLZXk6IFsnYXBpLWtleXMnXSB9KTsKICAgICAgc2V0QWRkS2V5TW9kYWwoZmFsc2UpOwogICAgICBzZXROZXdLZXkoeyBzZXJ2aWNlOiAnZWxldmVubGFicycsIGxhYmVsOiAnJywga2V5OiAnJyB9KTsKICAgICAgc2V0U2hvd0tleShmYWxzZSk7CiAgICAgIHRvYXN0LnN1Y2Nlc3MoJ0FQSSBrZXkgc2F2ZWQgc3VjY2Vzc2Z1bGx5Jyk7CiAgICB9LAogICAgb25FcnJvcjogKGVycjogYW55KSA9PiB0b2FzdC5lcnJvcihlcnI/LnJlc3BvbnNlPy5kYXRhPy5kZXRhaWwgPz8gJ0ZhaWxlZCB0byBzYXZlIGtleScpLAogIH0pOwoKICBjb25zdCBkZWxldGVLZXlNdXRhdGlvbiA9IHVzZU11dGF0aW9uKHsKICAgIG11dGF0aW9uRm46IHNldHRpbmdzQXBpLmRlbGV0ZUFwaUtleSwKICAgIG9uU3VjY2VzczogKCkgPT4gewogICAgICBxdWVyeUNsaWVudC5pbnZhbGlkYXRlUXVlcmllcyh7IHF1ZXJ5S2V5OiBbJ2FwaS1rZXlzJ10gfSk7CiAgICAgIHRvYXN0LnN1Y2Nlc3MoJ0FQSSBrZXkgcmVtb3ZlZCcpOwogICAgfSwKICB9KTsKCiAgY29uc3QgdmFsaWRhdGVNdXRhdGlvbiA9IHVzZU11dGF0aW9uKHsKICAgIG11dGF0aW9uRm46IHNldHRpbmdzQXBpLnZhbGlkYXRlQXBpS2V5LAogICAgb25TdWNjZXNzOiAoZGF0YSkgPT4gewogICAgICBxdWVyeUNsaWVudC5pbnZhbGlkYXRlUXVlcmllcyh7IHF1ZXJ5S2V5OiBbJ2FwaS1rZXlzJ10gfSk7CiAgICAgIHRvYXN0LnN1Y2Nlc3MoZGF0YS52YWxpZCA/ICdLZXkgaXMgdmFsaWQg4pyTJyA6ICdLZXkgaXMgaW52YWxpZCDinJcnKTsKICAgIH0sCiAgfSk7CgogIGNvbnN0IGhhbmRsZVBhc3N3b3JkQ2hhbmdlID0gYXN5bmMgKGU6IFJlYWN0LkZvcm1FdmVudCkgPT4gewogICAgZS5wcmV2ZW50RGVmYXVsdCgpOwogICAgaWYgKHB3ZEZvcm0ubmV4dCAhPT0gcHdkRm9ybS5jb25maXJtKSB7IHRvYXN0LmVycm9yKCdQYXNzd29yZHMgZG8gbm90IG1hdGNoJyk7IHJldHVybjsgfQogICAgaWYgKHB3ZEZvcm0ubmV4dC5sZW5ndGggPCA4KSAgICAgICAgICB7IHRvYXN0LmVycm9yKCdQYXNzd29yZCBtdXN0IGJlIDgrIGNoYXJzJyk7IHJldHVybjsgfQogICAgc2V0UHdkTG9hZGluZyh0cnVlKTsKICAgIHRyeSB7CiAgICAgIGF3YWl0IGF1dGhBcGkuY2hhbmdlUGFzc3dvcmQocHdkRm9ybS5jdXJyZW50LCBwd2RGb3JtLm5leHQpOwogICAgICB0b2FzdC5zdWNjZXNzKCdQYXNzd29yZCB1cGRhdGVkIScpOwogICAgICBzZXRQd2RGb3JtKHsgY3VycmVudDogJycsIG5leHQ6ICcnLCBjb25maXJtOiAnJyB9KTsKICAgIH0gY2F0Y2ggKGVycjogYW55KSB7CiAgICAgIHRvYXN0LmVycm9yKGVycj8ucmVzcG9uc2U/LmRhdGE/LmRldGFpbCA/PyAnRmFpbGVkIHRvIGNoYW5nZSBwYXNzd29yZCcpOwogICAgfSBmaW5hbGx5IHsKICAgICAgc2V0UHdkTG9hZGluZyhmYWxzZSk7CiAgICB9CiAgfTsKCiAgLy8gUmVzZXQgbW9kYWwgc3RhdGUgY2xlYW5seSB3aGVuIG9wZW5pbmcKICBjb25zdCBvcGVuQWRkS2V5TW9kYWwgPSAoKSA9PiB7CiAgICBzZXROZXdLZXkoeyBzZXJ2aWNlOiAnZWxldmVubGFicycsIGxhYmVsOiAnJywga2V5OiAnJyB9KTsKICAgIHNldFNob3dLZXkoZmFsc2UpOwogICAgc2V0QWRkS2V5TW9kYWwodHJ1ZSk7CiAgfTsKCiAgcmV0dXJuICgKICAgIDxkaXYgY2xhc3NOYW1lPSJtYXgtdy0zeGwgbXgtYXV0byBzcGFjZS15LTgiPgogICAgICA8ZGl2PgogICAgICAgIDxoMSBjbGFzc05hbWU9InRleHQtMnhsIGZvbnQtYm9sZCB0ZXh0LXdoaXRlIj5TZXR0aW5nczwvaDE+CiAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LWRhcmstNDAwIG10LTEiPk1hbmFnZSB5b3VyIGFjY291bnQgYW5kIEFQSSBpbnRlZ3JhdGlvbnM8L3A+CiAgICAgIDwvZGl2PgoKICAgICAgey8qIOKUgOKUgCBQcm9maWxlIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgCAqL30KICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPSJiZy1kYXJrLTgwMC82MCBib3JkZXIgYm9yZGVyLWRhcmstNzAwIHJvdW5kZWQtMnhsIHAtNiI+CiAgICAgICAgPGgyIGNsYXNzTmFtZT0idGV4dC1sZyBmb250LXNlbWlib2xkIHRleHQtd2hpdGUgZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIgbWItNSI+CiAgICAgICAgICA8VXNlciBzaXplPXsxOH0gY2xhc3NOYW1lPSJ0ZXh0LWJyYW5kLTQwMCIgLz4gUHJvZmlsZQogICAgICAgIDwvaDI+CiAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC00Ij4KICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJ3LTE0IGgtMTQgcm91bmRlZC1mdWxsIGJnLWdyYWRpZW50LWJyYW5kIGZsZXggaXRlbXMtY2VudGVyIGp1c3RpZnktY2VudGVyIHRleHQtd2hpdGUgdGV4dC14bCBmb250LWJvbGQiPgogICAgICAgICAgICB7dXNlcj8udXNlcm5hbWU/LlswXT8udG9VcHBlckNhc2UoKX0KICAgICAgICAgIDwvZGl2PgogICAgICAgICAgPGRpdj4KICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJmb250LXNlbWlib2xkIHRleHQtd2hpdGUiPnt1c2VyPy51c2VybmFtZX08L3A+CiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC1zbSB0ZXh0LWRhcmstNDAwIj57dXNlcj8uZW1haWx9PC9wPgogICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1kYXJrLTUwMCBtdC0wLjUiPgogICAgICAgICAgICAgIE1lbWJlciBzaW5jZSB7dXNlcj8uY3JlYXRlZF9hdCA/IG5ldyBEYXRlKHVzZXIuY3JlYXRlZF9hdCkudG9Mb2NhbGVEYXRlU3RyaW5nKCkgOiAn4oCUJ30KICAgICAgICAgICAgPC9wPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgPC9kaXY+CiAgICAgIDwvc2VjdGlvbj4KCiAgICAgIHsvKiDilIDilIAgQVBJIEtleXMg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAICovfQogICAgICA8c2VjdGlvbiBjbGFzc05hbWU9ImJnLWRhcmstODAwLzYwIGJvcmRlciBib3JkZXItZGFyay03MDAgcm91bmRlZC0yeGwgcC02Ij4KICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIganVzdGlmeS1iZXR3ZWVuIG1iLTUiPgogICAgICAgICAgPGgyIGNsYXNzTmFtZT0idGV4dC1sZyBmb250LXNlbWlib2xkIHRleHQtd2hpdGUgZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTIiPgogICAgICAgICAgICA8S2V5IHNpemU9ezE4fSBjbGFzc05hbWU9InRleHQtYnJhbmQtNDAwIiAvPiBBUEkgS2V5cwogICAgICAgICAgPC9oMj4KICAgICAgICAgIDxCdXR0b24gdmFyaWFudD0ib3V0bGluZSIgc2l6ZT0ic20iIGljb249ezxQbHVzIHNpemU9ezE0fSAvPn0gb25DbGljaz17b3BlbkFkZEtleU1vZGFsfT4KICAgICAgICAgICAgQWRkIEtleQogICAgICAgICAgPC9CdXR0b24+CiAgICAgICAgPC9kaXY+CgogICAgICAgIHsvKiBTZXJ2aWNlIHN0YXR1cyBjYXJkcyAqL30KICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZ3JpZCBncmlkLWNvbHMtMyBnYXAtMyBtYi02Ij4KICAgICAgICAgIHtPYmplY3QuZW50cmllcyhTRVJWSUNFX01FVEEpLm1hcCgoW3N2YywgbWV0YV0pID0+IHsKICAgICAgICAgICAgY29uc3QgZXhpc3RpbmcgPSBhcGlLZXlzLmZpbmQoayA9PiBrLnNlcnZpY2UgPT09IHN2Yyk7CiAgICAgICAgICAgIHJldHVybiAoCiAgICAgICAgICAgICAgPGRpdiBrZXk9e3N2Y30gY2xhc3NOYW1lPXtgcm91bmRlZC14bCBib3JkZXIgcC0zIHRleHQtY2VudGVyIHRyYW5zaXRpb24tYWxsCiAgICAgICAgICAgICAgICAke2V4aXN0aW5nID8gJ2JvcmRlci1ncmVlbi01MDAvMzAgYmctZ3JlZW4tNTAwLzUnIDogJ2JvcmRlci1kYXJrLTcwMCBiZy1kYXJrLTkwMC80MCd9YH0+CiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9InRleHQtMnhsIj57bWV0YS5pY29ufTwvc3Bhbj4KICAgICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT17YHRleHQtc20gZm9udC1tZWRpdW0gbXQtMSAke21ldGEuY29sb3J9YH0+e21ldGEubmFtZX08L3A+CiAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgbXQtMSI+CiAgICAgICAgICAgICAgICAgIHtleGlzdGluZwogICAgICAgICAgICAgICAgICAgID8gPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LWdyZWVuLTQwMCBmbGV4IGl0ZW1zLWNlbnRlciBqdXN0aWZ5LWNlbnRlciBnYXAtMSI+PENoZWNrQ2lyY2xlMiBzaXplPXsxMH0gLz4gQ29ubmVjdGVkPC9zcGFuPgogICAgICAgICAgICAgICAgICAgIDogPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LWRhcmstNTAwIj5Ob3QgY29uZmlndXJlZDwvc3Bhbj59CiAgICAgICAgICAgICAgICA8L3A+CiAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICk7CiAgICAgICAgICB9KX0KICAgICAgICA8L2Rpdj4KCiAgICAgICAgey8qIEtleSBsaXN0ICovfQogICAgICAgIHtrZXlzTG9hZGluZyA/ICgKICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJzcGFjZS15LTIiPgogICAgICAgICAgICB7WzEsIDJdLm1hcChpID0+IDxkaXYga2V5PXtpfSBjbGFzc05hbWU9ImgtMTQgYmctZGFyay03MDAgcm91bmRlZC14bCBhbmltYXRlLXB1bHNlIiAvPil9CiAgICAgICAgICA8L2Rpdj4KICAgICAgICApIDogYXBpS2V5cy5sZW5ndGggPT09IDAgPyAoCiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0idGV4dC1jZW50ZXIgcHktOCB0ZXh0LWRhcmstNTAwIj4KICAgICAgICAgICAgPEtleSBzaXplPXsyOH0gY2xhc3NOYW1lPSJteC1hdXRvIG1iLTIgb3BhY2l0eS0zMCIgLz4KICAgICAgICAgICAgPHAgY2xhc3NOYW1lPSJ0ZXh0LXNtIj5ObyBBUEkga2V5cyBjb25maWd1cmVkIHlldC48L3A+CiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyBtdC0xIj5BZGQgeW91ciBFbGV2ZW5MYWJzIGtleSB0byBlbmFibGUgcmVhbCBUVFMuPC9wPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgKSA6ICgKICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJzcGFjZS15LTMiPgogICAgICAgICAgICA8QW5pbWF0ZVByZXNlbmNlPgogICAgICAgICAgICAgIHthcGlLZXlzLm1hcChrZXkgPT4gewogICAgICAgICAgICAgICAgY29uc3QgbWV0YSA9IFNFUlZJQ0VfTUVUQVtrZXkuc2VydmljZV07CiAgICAgICAgICAgICAgICByZXR1cm4gKAogICAgICAgICAgICAgICAgICA8bW90aW9uLmRpdiBrZXk9e2tleS5pZH0KICAgICAgICAgICAgICAgICAgICBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0zIGJnLWRhcmstOTAwLzUwIGJvcmRlciBib3JkZXItZGFyay03MDAgcm91bmRlZC14bCBweC00IHB5LTMiCiAgICAgICAgICAgICAgICAgICAgaW5pdGlhbD17eyBvcGFjaXR5OiAwLCB4OiAtOCB9fSBhbmltYXRlPXt7IG9wYWNpdHk6IDEsIHg6IDAgfX0gZXhpdD17eyBvcGFjaXR5OiAwLCB4OiA4IH19PgogICAgICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT0idGV4dC1sZyI+e21ldGE/Lmljb24gPz8gJ/CflJEnfTwvc3Bhbj4KICAgICAgICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleC0xIG1pbi13LTAiPgogICAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIj4KICAgICAgICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPSJ0ZXh0LXNtIGZvbnQtbWVkaXVtIHRleHQtd2hpdGUiPntrZXkubGFiZWwgfHwgbWV0YT8ubmFtZX08L3NwYW4+CiAgICAgICAgICAgICAgICAgICAgICAgIHtrZXkuaXNfdmFsaWQgPT09IHRydWUgICYmIDxDaGVja0NpcmNsZTIgc2l6ZT17MTN9IGNsYXNzTmFtZT0idGV4dC1ncmVlbi00MDAiIC8+fQogICAgICAgICAgICAgICAgICAgICAgICB7a2V5LmlzX3ZhbGlkID09PSBmYWxzZSAmJiA8WENpcmNsZSAgICAgIHNpemU9ezEzfSBjbGFzc05hbWU9InRleHQtcmVkLTQwMCIgLz59CiAgICAgICAgICAgICAgICAgICAgICA8L2Rpdj4KICAgICAgICAgICAgICAgICAgICAgIDxwIGNsYXNzTmFtZT0idGV4dC14cyB0ZXh0LWRhcmstNDAwIGZvbnQtbW9ubyI+e2tleS5rZXlfcHJldmlld308L3A+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9ImZsZXggaXRlbXMtY2VudGVyIGdhcC0yIj4KICAgICAgICAgICAgICAgICAgICAgIDxCdXR0b24gdmFyaWFudD0iZ2hvc3QiIHNpemU9InNtIiBpY29uPXs8UmVmcmVzaEN3IHNpemU9ezEyfSAvPn0KICAgICAgICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gdmFsaWRhdGVNdXRhdGlvbi5tdXRhdGUoa2V5LmlkKX0KICAgICAgICAgICAgICAgICAgICAgICAgbG9hZGluZz17dmFsaWRhdGVNdXRhdGlvbi5pc1BlbmRpbmd9CiAgICAgICAgICAgICAgICAgICAgICAgIGNsYXNzTmFtZT0idGV4dC14cyI+CiAgICAgICAgICAgICAgICAgICAgICAgIFRlc3QKICAgICAgICAgICAgICAgICAgICAgIDwvQnV0dG9uPgogICAgICAgICAgICAgICAgICAgICAgPEJ1dHRvbiB2YXJpYW50PSJkYW5nZXIiIHNpemU9InNtIiBpY29uPXs8VHJhc2gyIHNpemU9ezEyfSAvPn0KICAgICAgICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4geyBpZiAoY29uZmlybSgnUmVtb3ZlIHRoaXMga2V5PycpKSBkZWxldGVLZXlNdXRhdGlvbi5tdXRhdGUoa2V5LmlkKTsgfX0+CiAgICAgICAgICAgICAgICAgICAgICAgIFJlbW92ZQogICAgICAgICAgICAgICAgICAgICAgPC9CdXR0b24+CiAgICAgICAgICAgICAgICAgICAgPC9kaXY+CiAgICAgICAgICAgICAgICAgIDwvbW90aW9uLmRpdj4KICAgICAgICAgICAgICAgICk7CiAgICAgICAgICAgICAgfSl9CiAgICAgICAgICAgIDwvQW5pbWF0ZVByZXNlbmNlPgogICAgICAgICAgPC9kaXY+CiAgICAgICAgKX0KICAgICAgPC9zZWN0aW9uPgoKICAgICAgey8qIOKUgOKUgCBTZWN1cml0eSDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAgKi99CiAgICAgIDxzZWN0aW9uIGNsYXNzTmFtZT0iYmctZGFyay04MDAvNjAgYm9yZGVyIGJvcmRlci1kYXJrLTcwMCByb3VuZGVkLTJ4bCBwLTYiPgogICAgICAgIDxoMiBjbGFzc05hbWU9InRleHQtbGcgZm9udC1zZW1pYm9sZCB0ZXh0LXdoaXRlIGZsZXggaXRlbXMtY2VudGVyIGdhcC0yIG1iLTUiPgogICAgICAgICAgPFNoaWVsZCBzaXplPXsxOH0gY2xhc3NOYW1lPSJ0ZXh0LWJyYW5kLTQwMCIgLz4gU2VjdXJpdHkKICAgICAgICA8L2gyPgogICAgICAgIDxmb3JtIG9uU3VibWl0PXtoYW5kbGVQYXNzd29yZENoYW5nZX0gY2xhc3NOYW1lPSJzcGFjZS15LTQgbWF4LXctc20iPgogICAgICAgICAgPElucHV0IGxhYmVsPSJDdXJyZW50IHBhc3N3b3JkIiB0eXBlPXtzaG93UHdkcyA/ICd0ZXh0JyA6ICdwYXNzd29yZCd9CiAgICAgICAgICAgIHZhbHVlPXtwd2RGb3JtLmN1cnJlbnR9CiAgICAgICAgICAgIG9uQ2hhbmdlPXtlID0+IHNldFB3ZEZvcm0oZiA9PiAoeyAuLi5mLCBjdXJyZW50OiBlLnRhcmdldC52YWx1ZSB9KSl9CiAgICAgICAgICAgIGF1dG9Db21wbGV0ZT0iY3VycmVudC1wYXNzd29yZCIKICAgICAgICAgICAgaWNvbj17PExvY2sgc2l6ZT17MTR9IC8+fSAvPgogICAgICAgICAgPElucHV0IGxhYmVsPSJOZXcgcGFzc3dvcmQiIHR5cGU9e3Nob3dQd2RzID8gJ3RleHQnIDogJ3Bhc3N3b3JkJ30KICAgICAgICAgICAgdmFsdWU9e3B3ZEZvcm0ubmV4dH0KICAgICAgICAgICAgb25DaGFuZ2U9e2UgPT4gc2V0UHdkRm9ybShmID0+ICh7IC4uLmYsIG5leHQ6IGUudGFyZ2V0LnZhbHVlIH0pKX0KICAgICAgICAgICAgYXV0b0NvbXBsZXRlPSJuZXctcGFzc3dvcmQiCiAgICAgICAgICAgIGhpbnQ9Ik1pbmltdW0gOCBjaGFyYWN0ZXJzIgogICAgICAgICAgICBpY29uPXs8TG9jayBzaXplPXsxNH0gLz59IC8+CiAgICAgICAgICA8SW5wdXQgbGFiZWw9IkNvbmZpcm0gbmV3IHBhc3N3b3JkIiB0eXBlPXtzaG93UHdkcyA/ICd0ZXh0JyA6ICdwYXNzd29yZCd9CiAgICAgICAgICAgIHZhbHVlPXtwd2RGb3JtLmNvbmZpcm19CiAgICAgICAgICAgIG9uQ2hhbmdlPXtlID0+IHNldFB3ZEZvcm0oZiA9PiAoeyAuLi5mLCBjb25maXJtOiBlLnRhcmdldC52YWx1ZSB9KSl9CiAgICAgICAgICAgIGF1dG9Db21wbGV0ZT0ibmV3LXBhc3N3b3JkIgogICAgICAgICAgICBpY29uPXs8TG9jayBzaXplPXsxNH0gLz59IC8+CiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT0iZmxleCBpdGVtcy1jZW50ZXIgZ2FwLTMiPgogICAgICAgICAgICA8QnV0dG9uIHR5cGU9InN1Ym1pdCIgdmFyaWFudD0icHJpbWFyeSIgc2l6ZT0ic20iIGxvYWRpbmc9e3B3ZExvYWRpbmd9PgogICAgICAgICAgICAgIFVwZGF0ZSBQYXNzd29yZAogICAgICAgICAgICA8L0J1dHRvbj4KICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPSJidXR0b24iCiAgICAgICAgICAgICAgY2xhc3NOYW1lPSJ0ZXh0LXhzIHRleHQtZGFyay00MDAgaG92ZXI6dGV4dC13aGl0ZSBmbGV4IGl0ZW1zLWNlbnRlciBnYXAtMSIKICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBzZXRTaG93UHdkcyghc2hvd1B3ZHMpfT4KICAgICAgICAgICAgICB7c2hvd1B3ZHMgPyA8RXllT2ZmIHNpemU9ezEyfSAvPiA6IDxFeWUgc2l6ZT17MTJ9IC8+fQogICAgICAgICAgICAgIHtzaG93UHdkcyA/ICdIaWRlJyA6ICdTaG93J30KICAgICAgICAgICAgPC9idXR0b24+CiAgICAgICAgICA8L2Rpdj4KICAgICAgICA8L2Zvcm0+CiAgICAgIDwvc2VjdGlvbj4KCiAgICAgIHsvKiDilIDilIAgQWRkIEtleSBNb2RhbCDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIAgKi99CiAgICAgIDxNb2RhbCBvcGVuPXthZGRLZXlNb2RhbH0gb25DbG9zZT17KCkgPT4gc2V0QWRkS2V5TW9kYWwoZmFsc2UpfSB0aXRsZT0iQWRkIEFQSSBLZXkiPgogICAgICAgIHsvKgogICAgICAgICAgYXV0b0NvbXBsZXRlIG9uIGVhY2ggaW5wdXQ6CiAgICAgICAgICAtIExhYmVsICAgICAg4oaSICJvZmYiICAgICAgICAgICBzdG9wcyBicm93c2VyIHRyZWF0aW5nIGl0IGFzICJ1c2VybmFtZSIKICAgICAgICAgIC0gQVBJIEtleSAgICDihpIgIm5ldy1wYXNzd29yZCIgIHRoZSBvbmx5IHZhbHVlIENocm9tZS9GaXJlZm94IGhvbm91ciBmb3IKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBwYXNzd29yZC10eXBlIGlucHV0czsgIm9mZiIgaXMgaWdub3JlZAogICAgICAgICovfQogICAgICAgIDxkaXYgY2xhc3NOYW1lPSJzcGFjZS15LTQiPgoKICAgICAgICAgIHsvKiBTZXJ2aWNlIHNlbGVjdG9yICovfQogICAgICAgICAgPGRpdj4KICAgICAgICAgICAgPGxhYmVsIGNsYXNzTmFtZT0idGV4dC1zbSBmb250LW1lZGl1bSB0ZXh0LWRhcmstMjAwIG1iLTEuNSBibG9jayI+U2VydmljZTwvbGFiZWw+CiAgICAgICAgICAgIDxzZWxlY3QKICAgICAgICAgICAgICB2YWx1ZT17bmV3S2V5LnNlcnZpY2V9CiAgICAgICAgICAgICAgb25DaGFuZ2U9e2UgPT4gc2V0TmV3S2V5KGsgPT4gKHsgLi4uaywgc2VydmljZTogZS50YXJnZXQudmFsdWUgfSkpfQogICAgICAgICAgICAgIGNsYXNzTmFtZT0idy1mdWxsIGJnLWRhcmstODAwIGJvcmRlciBib3JkZXItZGFyay03MDAgdGV4dC13aGl0ZSByb3VuZGVkLXhsIHB4LTMgcHktMi41IHRleHQtc20KICAgICAgICAgICAgICAgICAgICAgICAgIGZvY3VzOm91dGxpbmUtbm9uZSBmb2N1czpyaW5nLTIgZm9jdXM6cmluZy1icmFuZC01MDAvNTAiPgogICAgICAgICAgICAgIHtPYmplY3QuZW50cmllcyhTRVJWSUNFX01FVEEpLm1hcCgoW3N2YywgbWV0YV0pID0+ICgKICAgICAgICAgICAgICAgIDxvcHRpb24ga2V5PXtzdmN9IHZhbHVlPXtzdmN9PnttZXRhLmljb259IHttZXRhLm5hbWV9PC9vcHRpb24+CiAgICAgICAgICAgICAgKSl9CiAgICAgICAgICAgIDwvc2VsZWN0PgogICAgICAgICAgPC9kaXY+CgogICAgICAgICAgey8qIExhYmVsIOKAlCBhdXRvQ29tcGxldGU9Im9mZiIgcHJldmVudHMgYnJvd3NlciBpbmplY3RpbmcgdGhlIHNhdmVkIHVzZXJuYW1lICovfQogICAgICAgICAgPElucHV0CiAgICAgICAgICAgIGxhYmVsPSJMYWJlbCAob3B0aW9uYWwpIgogICAgICAgICAgICBwbGFjZWhvbGRlcj17YE15ICR7U0VSVklDRV9NRVRBW25ld0tleS5zZXJ2aWNlXT8ubmFtZX0ga2V5YH0KICAgICAgICAgICAgdmFsdWU9e25ld0tleS5sYWJlbH0KICAgICAgICAgICAgb25DaGFuZ2U9e2UgPT4gc2V0TmV3S2V5KGsgPT4gKHsgLi4uaywgbGFiZWw6IGUudGFyZ2V0LnZhbHVlIH0pKX0KICAgICAgICAgICAgYXV0b0NvbXBsZXRlPSJvZmYiCiAgICAgICAgICAvPgoKICAgICAgICAgIHsvKiBBUEkgS2V5IOKAlCBhdXRvQ29tcGxldGU9Im5ldy1wYXNzd29yZCIgcHJldmVudHMgYnJvd3NlciBpbmplY3RpbmcgdGhlIHNhdmVkIHBhc3N3b3JkICovfQogICAgICAgICAgPGRpdj4KICAgICAgICAgICAgPElucHV0CiAgICAgICAgICAgICAgbGFiZWw9IkFQSSBLZXkiCiAgICAgICAgICAgICAgdHlwZT17c2hvd0tleSA/ICd0ZXh0JyA6ICdwYXNzd29yZCd9CiAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9e1NFUlZJQ0VfTUVUQVtuZXdLZXkuc2VydmljZV0/LmhpbnR9CiAgICAgICAgICAgICAgdmFsdWU9e25ld0tleS5rZXl9CiAgICAgICAgICAgICAgb25DaGFuZ2U9e2UgPT4gc2V0TmV3S2V5KGsgPT4gKHsgLi4uaywga2V5OiBlLnRhcmdldC52YWx1ZSB9KSl9CiAgICAgICAgICAgICAgaWNvbj17PEtleSBzaXplPXsxNH0gLz59CiAgICAgICAgICAgICAgYXV0b0NvbXBsZXRlPSJuZXctcGFzc3dvcmQiCiAgICAgICAgICAgICAgaWNvblJpZ2h0PXsKICAgICAgICAgICAgICAgIDxidXR0b24KICAgICAgICAgICAgICAgICAgdHlwZT0iYnV0dG9uIgogICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBzZXRTaG93S2V5KCFzaG93S2V5KX0KICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPSJob3Zlcjp0ZXh0LXdoaXRlIHRyYW5zaXRpb24tY29sb3JzIj4KICAgICAgICAgICAgICAgICAge3Nob3dLZXkgPyA8RXllT2ZmIHNpemU9ezE0fSAvPiA6IDxFeWUgc2l6ZT17MTR9IC8+fQogICAgICAgICAgICAgICAgPC9idXR0b24+CiAgICAgICAgICAgICAgfQogICAgICAgICAgICAvPgogICAgICAgICAgICA8cCBjbGFzc05hbWU9InRleHQteHMgdGV4dC1kYXJrLTUwMCBtdC0xLjUiPvCflJIgS2V5cyBhcmUgZW5jcnlwdGVkIGFuZCBzdG9yZWQgc2VjdXJlbHk8L3A+CiAgICAgICAgICA8L2Rpdj4KCiAgICAgICAgICB7LyogQWN0aW9ucyAqL30KICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPSJmbGV4IGdhcC0zIHB0LTIiPgogICAgICAgICAgICA8QnV0dG9uIHZhcmlhbnQ9InNlY29uZGFyeSIgY2xhc3NOYW1lPSJmbGV4LTEiIG9uQ2xpY2s9eygpID0+IHNldEFkZEtleU1vZGFsKGZhbHNlKX0+CiAgICAgICAgICAgICAgQ2FuY2VsCiAgICAgICAgICAgIDwvQnV0dG9uPgogICAgICAgICAgICA8QnV0dG9uCiAgICAgICAgICAgICAgdmFyaWFudD0icHJpbWFyeSIKICAgICAgICAgICAgICBjbGFzc05hbWU9ImZsZXgtMSIKICAgICAgICAgICAgICBkaXNhYmxlZD17IW5ld0tleS5rZXkudHJpbSgpfQogICAgICAgICAgICAgIGxvYWRpbmc9e2FkZEtleU11dGF0aW9uLmlzUGVuZGluZ30KICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBhZGRLZXlNdXRhdGlvbi5tdXRhdGUoKX0KICAgICAgICAgICAgICBpY29uPXs8WmFwIHNpemU9ezE0fSAvPn0+CiAgICAgICAgICAgICAgU2F2ZSBLZXkKICAgICAgICAgICAgPC9CdXR0b24+CiAgICAgICAgICA8L2Rpdj4KCiAgICAgICAgPC9kaXY+CiAgICAgIDwvTW9kYWw+CiAgICA8L2Rpdj4KICApOwp9Owo=
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Key, Plus, Trash2, CheckCircle2, XCircle, Eye, EyeOff, 
+  User, Lock, Shield, Zap, RefreshCw, 
+} from 'lucide-react';
+import { settingsApi } from '../api/settings';
+import { authApi } from '../api/auth';
+import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/UI/Button';
+import { Input } from '../components/UI/Input';
+import { Modal } from '../components/UI/Modal';
+import type { ApiKey } from '../types';
+import toast from 'react-hot-toast';
+
+const SERVICE_META: Record<string, { name: string; icon: string; color: string; hint: string }> = {
+  elevenlabs: { name: 'ElevenLabs', icon: '🎙️', color: 'text-brand-400',    hint: 'sk-...' },
+  mubert:     { name: 'Mubert',     icon: '🎵', color: 'text-accent-teal',  hint: 'Your Mubert API token' },
+  soundraw:   { name: 'Soundraw',   icon: '🎶', color: 'text-accent-amber', hint: 'Your Soundraw API key' },
+};
+
+export const SettingsPage: React.FC = () => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // ── API Keys state ──────────────────────────────────────────────────────
+  const [addKeyModal, setAddKeyModal] = useState(false);
+  const [newKey, setNewKey]           = useState({ service: 'elevenlabs', label: '', key: '' });
+  const [showKey, setShowKey]         = useState(false);
+
+  // ── Password change state ────────────────────────────────────────────────
+  const [pwdForm, setPwdForm]     = useState({ current: '', next: '', confirm: '' });
+  const [showPwds, setShowPwds]   = useState(false);
+  const [pwdLoading, setPwdLoading] = useState(false);
+
+  const { data: apiKeys = [], isLoading: keysLoading } = useQuery({
+    queryKey: ['api-keys'],
+    queryFn: settingsApi.getApiKeys,
+  });
+
+  const addKeyMutation = useMutation({
+    mutationFn: () => settingsApi.addApiKey(newKey.service, newKey.label, newKey.key),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+      setAddKeyModal(false);
+      setNewKey({ service: 'elevenlabs', label: '', key: '' });
+      setShowKey(false);
+      toast.success('API key saved successfully');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail ?? 'Failed to save key'),
+  });
+
+  const deleteKeyMutation = useMutation({
+    mutationFn: settingsApi.deleteApiKey,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+      toast.success('API key removed');
+    },
+  });
+
+  const validateMutation = useMutation({
+    mutationFn: settingsApi.validateApiKey,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+      toast.success(data.valid ? 'Key is valid ✓' : 'Key is invalid ✗');
+    },
+  });
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwdForm.next !== pwdForm.confirm) { toast.error('Passwords do not match'); return; }
+    if (pwdForm.next.length < 8)          { toast.error('Password must be 8+ chars'); return; }
+    setPwdLoading(true);
+    try {
+      await authApi.changePassword(pwdForm.current, pwdForm.next);
+      toast.success('Password updated!');
+      setPwdForm({ current: '', next: '', confirm: '' });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to change password');
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
+  // Reset modal state cleanly when opening
+  const openAddKeyModal = () => {
+    setNewKey({ service: 'elevenlabs', label: '', key: '' });
+    setShowKey(false);
+    setAddKeyModal(true);
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Settings</h1>
+        <p className="text-dark-400 mt-1">Manage your account and API integrations</p>
+      </div>
+
+      {/* ── Profile ──────────────────────────────────────────────────────── */}
+      <section className="bg-dark-800/60 border border-dark-700 rounded-2xl p-6">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-5">
+          <User size={18} className="text-brand-400" /> Profile
+        </h2>
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-gradient-brand flex items-center justify-center text-white text-xl font-bold">
+            {user?.username?.[0]?.toUpperCase()}
+          </div>
+          <div>
+            <p className="font-semibold text-white">{user?.username}</p>
+            <p className="text-sm text-dark-400">{user?.email}</p>
+            <p className="text-xs text-dark-500 mt-0.5">
+              Member since {user?.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── API Keys ──────────────────────────────────────────────────────── */}
+      <section className="bg-dark-800/60 border border-dark-700 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Key size={18} className="text-brand-400" /> API Keys
+          </h2>
+          <Button variant="outline" size="sm" icon={<Plus size={14} />} onClick={openAddKeyModal}>
+            Add Key
+          </Button>
+        </div>
+
+        {/* Service status cards */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {Object.entries(SERVICE_META).map(([svc, meta]) => {
+            const existing = apiKeys.find(k => k.service === svc);
+            return (
+              <div key={svc} className={`rounded-xl border p-3 text-center transition-all
+                ${existing ? 'border-green-500/30 bg-green-500/5' : 'border-dark-700 bg-dark-900/40'}`}>
+                <span className="text-2xl">{meta.icon}</span>
+                <p className={`text-sm font-medium mt-1 ${meta.color}`}>{meta.name}</p>
+                <p className="text-xs mt-1">
+                  {existing
+                    ? <span className="text-green-400 flex items-center justify-center gap-1"><CheckCircle2 size={10} /> Connected</span>
+                    : <span className="text-dark-500">Not configured</span>}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Key list */}
+        {keysLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => <div key={i} className="h-14 bg-dark-700 rounded-xl animate-pulse" />)}
+          </div>
+        ) : apiKeys.length === 0 ? (
+          <div className="text-center py-8 text-dark-500">
+            <Key size={28} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No API keys configured yet.</p>
+            <p className="text-xs mt-1">Add your ElevenLabs key to enable real TTS.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <AnimatePresence>
+              {apiKeys.map(key => {
+                const meta = SERVICE_META[key.service];
+                return (
+                  <motion.div key={key.id}
+                    className="flex items-center gap-3 bg-dark-900/50 border border-dark-700 rounded-xl px-4 py-3"
+                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }}>
+                    <span className="text-lg">{meta?.icon ?? '🔑'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white">{key.label || meta?.name}</span>
+                        {key.is_valid === true  && <CheckCircle2 size={13} className="text-green-400" />}
+                        {key.is_valid === false && <XCircle      size={13} className="text-red-400" />}
+                      </div>
+                      <p className="text-xs text-dark-400 font-mono">{key.key_preview}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" icon={<RefreshCw size={12} />}
+                        onClick={() => validateMutation.mutate(key.id)}
+                        loading={validateMutation.isPending}
+                        className="text-xs">
+                        Test
+                      </Button>
+                      <Button variant="danger" size="sm" icon={<Trash2 size={12} />}
+                        onClick={() => { if (confirm('Remove this key?')) deleteKeyMutation.mutate(key.id); }}>
+                        Remove
+                      </Button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        )}
+      </section>
+
+      {/* ── Security ──────────────────────────────────────────────────────── */}
+      <section className="bg-dark-800/60 border border-dark-700 rounded-2xl p-6">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-5">
+          <Shield size={18} className="text-brand-400" /> Security
+        </h2>
+        <form onSubmit={handlePasswordChange} className="space-y-4 max-w-sm">
+          <Input label="Current password" type={showPwds ? 'text' : 'password'}
+            value={pwdForm.current}
+            onChange={e => setPwdForm(f => ({ ...f, current: e.target.value }))}
+            autoComplete="current-password"
+            icon={<Lock size={14} />} />
+          <Input label="New password" type={showPwds ? 'text' : 'password'}
+            value={pwdForm.next}
+            onChange={e => setPwdForm(f => ({ ...f, next: e.target.value }))}
+            autoComplete="new-password"
+            hint="Minimum 8 characters"
+            icon={<Lock size={14} />} />
+          <Input label="Confirm new password" type={showPwds ? 'text' : 'password'}
+            value={pwdForm.confirm}
+            onChange={e => setPwdForm(f => ({ ...f, confirm: e.target.value }))}
+            autoComplete="new-password"
+            icon={<Lock size={14} />} />
+          <div className="flex items-center gap-3">
+            <Button type="submit" variant="primary" size="sm" loading={pwdLoading}>
+              Update Password
+            </Button>
+            <button type="button"
+              className="text-xs text-dark-400 hover:text-white flex items-center gap-1"
+              onClick={() => setShowPwds(!showPwds)}>
+              {showPwds ? <EyeOff size={12} /> : <Eye size={12} />}
+              {showPwds ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* ── Add Key Modal ─────────────────────────────────────────────────── */}
+      <Modal open={addKeyModal} onClose={() => setAddKeyModal(false)} title="Add API Key">
+        {/*
+          autoComplete on each input:
+          - Label      → "off"           stops browser treating it as "username"
+          - API Key    → "new-password"  the only value Chrome/Firefox honour for
+                                         password-type inputs; "off" is ignored
+        */}
+        <div className="space-y-4">
+
+          {/* Service selector */}
+          <div>
+            <label className="text-sm font-medium text-dark-200 mb-1.5 block">Service</label>
+            <select
+              value={newKey.service}
+              onChange={e => setNewKey(k => ({ ...k, service: e.target.value }))}
+              className="w-full bg-dark-800 border border-dark-700 text-white rounded-xl px-3 py-2.5 text-sm
+                         focus:outline-none focus:ring-2 focus:ring-brand-500/50">
+              {Object.entries(SERVICE_META).map(([svc, meta]) => (
+                <option key={svc} value={svc}>{meta.icon} {meta.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Label — autoComplete="off" prevents browser injecting the saved username */}
+          <Input
+            label="Label (optional)"
+            placeholder={`My ${SERVICE_META[newKey.service]?.name} key`}
+            value={newKey.label}
+            onChange={e => setNewKey(k => ({ ...k, label: e.target.value }))}
+            autoComplete="off"
+          />
+
+          {/* API Key — autoComplete="new-password" prevents browser injecting the saved password */}
+          <div>
+            <Input
+              label="API Key"
+              type={showKey ? 'text' : 'password'}
+              placeholder={SERVICE_META[newKey.service]?.hint}
+              value={newKey.key}
+              onChange={e => setNewKey(k => ({ ...k, key: e.target.value }))}
+              icon={<Key size={14} />}
+              autoComplete="new-password"
+              iconRight={
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="hover:text-white transition-colors">
+                  {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              }
+            />
+            <p className="text-xs text-dark-500 mt-1.5">🔒 Keys are encrypted and stored securely</p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setAddKeyModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              disabled={!newKey.key.trim()}
+              loading={addKeyMutation.isPending}
+              onClick={() => addKeyMutation.mutate()}
+              icon={<Zap size={14} />}>
+              Save Key
+            </Button>
+          </div>
+
+        </div>
+      </Modal>
+    </div>
+  );
+};
