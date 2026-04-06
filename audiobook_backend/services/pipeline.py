@@ -277,7 +277,7 @@ def _resolve_voice(voice_assignment: dict[str, str], speaker: str | None) -> str
 async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | None]:
     """
     Fetch one music track per unique emotion in the book.
-    Reads the user's stored Mubert / Soundraw API keys from the DB.
+    Reads the user's stored Mubert / Soundraw / Jamendo API keys from the DB.
     """
     from services.music_service import get_background_music
     from api.routes.settings import get_user_api_key
@@ -288,10 +288,12 @@ async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | N
 
     mubert_key   = get_user_api_key(user_id, "mubert")   if user_id else None
     soundraw_key = get_user_api_key(user_id, "soundraw") if user_id else None
+    jamendo_key  = get_user_api_key(user_id, "jamendo")  if user_id else None
 
     # Fallback to env-level keys
     if not mubert_key:   mubert_key   = getattr(settings, "MUBERT_API_KEY", None) or None
     if not soundraw_key: soundraw_key = getattr(settings, "SOUNDRAW_API_KEY", None) or None
+    if not jamendo_key:  jamendo_key  = getattr(settings, "JAMENDO_CLIENT_ID", None) or None
 
     emotions = list({ch.get("dominant_emotion", "neutral") for ch in chapters})
     result: dict[str, Path | None] = {}
@@ -300,5 +302,6 @@ async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | N
             emotion,
             mubert_api_key=mubert_key,
             soundraw_api_key=soundraw_key,
+            jamendo_client_id=jamendo_key,
         )
     return result

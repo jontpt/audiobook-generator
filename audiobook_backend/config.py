@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # ── Music APIs ────────────────────────────────────────────────────────────
     MUBERT_API_KEY:   str = ""
     SOUNDRAW_API_KEY: str = ""
+    JAMENDO_CLIENT_ID: str = ""
 
     # ── Audio ─────────────────────────────────────────────────────────────────
     AUDIO_FORMAT:     str   = "mp3"

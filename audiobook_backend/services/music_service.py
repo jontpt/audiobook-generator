@@ -4,7 +4,8 @@ services/music_service.py  ─  AI Background Music Generation
 Providers (in priority order, based on which API key is configured):
   1. Mubert   — REST API, tag-based generation, returns MP3 URL
   2. Soundraw — REST API, style-based generation
-  3. Fallback — returns None (caller uses silence / skips music)
+  3. Jamendo  — free catalog search using client_id (API key)
+  4. Fallback — returns None (caller uses silence / skips music)
 """
 from __future__ import annotations
 import hashlib
@@ -55,6 +56,7 @@ async def get_background_music(
     duration_seconds: int = 120,
     mubert_api_key: Optional[str] = None,
     soundraw_api_key: Optional[str] = None,
+    jamendo_client_id: Optional[str] = None,
 ) -> Optional[Path]:
     """
     Try each provider in order and return a local Path to an MP3 file,
@@ -76,6 +78,12 @@ async def get_background_music(
     # Try Soundraw
     if soundraw_api_key:
         path = await _soundraw_generate(emotion, duration_seconds, soundraw_api_key, cached)
+        if path:
+            return path
+
+    # Try Jamendo (free-tier friendly fallback)
+    if jamendo_client_id:
+        path = await _jamendo_generate(emotion, duration_seconds, jamendo_client_id, cached)
         if path:
             return path
 
@@ -209,6 +217,78 @@ async def _soundraw_generate(
 
     except Exception as exc:
         logger.error(f"Soundraw API error: {exc}")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Jamendo implementation
+# ─────────────────────────────────────────────────────────────────────────────
+
+EMOTION_TO_JAMENDO_TAGS: dict[str, str] = {
+    "suspense": "cinematic dark tension",
+    "romantic": "romantic soft",
+    "sad": "sad piano ambient",
+    "happy": "happy upbeat",
+    "dramatic": "dramatic cinematic orchestral",
+    "action": "action energetic",
+    "mysterious": "mysterious ambient dark",
+    "peaceful": "peaceful calm ambient",
+    "neutral": "ambient background",
+}
+
+
+async def _jamendo_generate(
+    emotion: str,
+    duration: int,
+    client_id: str,
+    dest: Path,
+) -> Optional[Path]:
+    """
+    Search Jamendo tracks and download the closest-duration MP3.
+    Uses API v3.0 /tracks endpoint with client_id auth.
+    """
+    tags = EMOTION_TO_JAMENDO_TAGS.get(emotion, "ambient background")
+    min_dur = max(15, duration - 45)
+    max_dur = min(600, duration + 45)
+    params = {
+        "client_id": client_id,
+        "format": "json",
+        "limit": 20,
+        "audioformat": "mp31",
+        "fuzzytags": tags,
+        "include": "musicinfo",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get("https://api.jamendo.com/v3.0/tracks/", params=params)
+            if resp.status_code != 200:
+                logger.warning(f"Jamendo status {resp.status_code}: {resp.text[:200]}")
+                return None
+            data = resp.json()
+
+        results = data.get("results") or []
+        # Filter for reasonable duration and playable url
+        candidates = []
+        for t in results:
+            track_duration = int(t.get("duration") or 0)
+            audio_url = t.get("audio")
+            if not audio_url:
+                continue
+            if min_dur <= track_duration <= max_dur:
+                candidates.append(t)
+        if not candidates:
+            candidates = [t for t in results if t.get("audio")]
+        if not candidates:
+            logger.warning("Jamendo returned no downloadable tracks")
+            return None
+
+        target = min(candidates, key=lambda t: abs(int(t.get("duration") or 0) - duration))
+        audio_url = target.get("audio")
+        if not audio_url:
+            return None
+        return await _download_music(audio_url, dest)
+    except Exception as exc:
+        logger.error(f"Jamendo API error: {exc}")
         return None
 
 

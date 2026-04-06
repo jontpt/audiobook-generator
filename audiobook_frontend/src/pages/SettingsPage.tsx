@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 const SERVICE_META: Record<string, { name: string; icon: string; color: string; hint: string }> = {
   elevenlabs: { name: 'ElevenLabs', icon: '🎙️', color: 'text-brand-400',    hint: 'sk-...' },
   mubert:     { name: 'Mubert',     icon: '🎵', color: 'text-accent-teal',  hint: 'Your Mubert API token' },
+  jamendo:    { name: 'Jamendo',    icon: '🎼', color: 'text-accent-blue',  hint: 'Your Jamendo client_id' },
   soundraw:   { name: 'Soundraw',   icon: '🎶', color: 'text-accent-amber', hint: 'Your Soundraw API key' },
 };
 

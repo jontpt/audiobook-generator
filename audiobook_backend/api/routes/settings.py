@@ -16,7 +16,7 @@ from services.auth_service import encrypt_key, decrypt_key, mask_key
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
-SUPPORTED_SERVICES = {"elevenlabs", "mubert", "soundraw"}
+SUPPORTED_SERVICES = {"elevenlabs", "mubert", "soundraw", "jamendo"}
 
 
 class ApiKeyCreate(BaseModel):
@@ -102,6 +102,18 @@ async def _validate(service: str, key: str) -> bool:
                 )
                 # 200 = valid key with TTS access; 401/403 = invalid
                 return r.status_code == 200
+        if service == "jamendo":
+            # Jamendo uses client_id; lightweight probe against tracks endpoint.
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(
+                    "https://api.jamendo.com/v3.0/tracks/",
+                    params={"client_id": key, "format": "json", "limit": 1},
+                )
+                if r.status_code != 200:
+                    return False
+                data = r.json()
+                # Jamendo returns headers.status for request status.
+                return str((data.get("headers") or {}).get("status", "")) == "success"
         return bool(key)
     except Exception:
         return False

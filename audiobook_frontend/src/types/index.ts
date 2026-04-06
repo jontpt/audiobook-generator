@@ -21,7 +21,7 @@ export interface User {
 
 export interface ApiKey {
   id: string;
-  service: string;        // 'elevenlabs' | 'mubert' | 'soundraw'
+  service: string;        // 'elevenlabs' | 'mubert' | 'soundraw' | 'jamendo'
   label: string;
   key_preview: string;    // "sk-...ab12"
   is_valid: boolean | null;
