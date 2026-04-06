@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 import logging
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
@@ -30,6 +31,39 @@ class ProfileUpdate(BaseModel):
     email:    str | None = None
 
 
+def _normalize_jamendo_client_id(raw: str) -> str:
+    """
+    Accept common copy/paste formats and extract the actual Jamendo client_id.
+    Supported inputs:
+      - plain client_id
+      - client_id=XXXX
+      - full URL/query string containing client_id=XXXX
+      - client_id:client_secret  (keeps left side)
+    """
+    value = (raw or "").strip()
+    if not value:
+        return value
+
+    # Full URL with query params
+    if "://" in value and "client_id=" in value:
+        parsed = urlparse(value)
+        candidate = (parse_qs(parsed.query).get("client_id") or [None])[0]
+        if candidate:
+            return candidate.strip()
+
+    # Raw query fragment style
+    if value.startswith("client_id="):
+        return value.split("=", 1)[1].strip()
+
+    # client_id:client_secret
+    if ":" in value and " " not in value:
+        left = value.split(":", 1)[0].strip()
+        if left:
+            return left
+
+    return value
+
+
 @router.get("/api-keys", response_model=list)
 async def list_api_keys(current_user: dict = Depends(get_current_user)):
     keys = await db.search(db.api_keys, "user_id", current_user["id"])
@@ -50,7 +84,10 @@ async def list_api_keys(current_user: dict = Depends(get_current_user)):
 async def add_api_key(req: ApiKeyCreate, current_user: dict = Depends(get_current_user)):
     if req.service not in SUPPORTED_SERVICES:
         raise HTTPException(422, f"Unsupported service. Choose from: {SUPPORTED_SERVICES}")
-    if not req.key.strip():
+    key_value = req.key.strip()
+    if req.service == "jamendo":
+        key_value = _normalize_jamendo_client_id(key_value)
+    if not key_value:
         raise HTTPException(422, "API key cannot be empty")
 
     record = {
@@ -58,8 +95,8 @@ async def add_api_key(req: ApiKeyCreate, current_user: dict = Depends(get_curren
         "user_id":       current_user["id"],
         "service":       req.service,
         "label":         req.label or req.service.capitalize(),
-        "key_encrypted": encrypt_key(req.key.strip()),
-        "key_preview":   mask_key(req.key.strip()),
+        "key_encrypted": encrypt_key(key_value),
+        "key_preview":   mask_key(key_value),
         "is_valid":      None,
         "created_at":    datetime.utcnow().isoformat(),
     }
@@ -104,16 +141,23 @@ async def _validate(service: str, key: str) -> bool:
                 return r.status_code == 200
         if service == "jamendo":
             # Jamendo uses client_id; lightweight probe against tracks endpoint.
+            client_id = _normalize_jamendo_client_id(key)
             async with httpx.AsyncClient(timeout=15) as client:
                 r = await client.get(
                     "https://api.jamendo.com/v3.0/tracks/",
-                    params={"client_id": key, "format": "json", "limit": 1},
+                    params={"client_id": client_id, "format": "json", "limit": 1},
                 )
                 if r.status_code != 200:
                     return False
                 data = r.json()
-                # Jamendo returns headers.status for request status.
-                return str((data.get("headers") or {}).get("status", "")) == "success"
+                headers = data.get("headers") or {}
+                status = str(headers.get("status", "")).lower()
+                code = int(headers.get("code", -1))
+                # code=5 is Jamendo's invalid credential error.
+                if code == 5:
+                    return False
+                # Treat other non-auth API statuses as potentially transient to avoid false negatives.
+                return status == "success" or code != 5
         return bool(key)
     except Exception:
         return False

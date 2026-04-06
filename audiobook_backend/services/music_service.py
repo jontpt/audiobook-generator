@@ -237,6 +237,35 @@ EMOTION_TO_JAMENDO_TAGS: dict[str, str] = {
 }
 
 
+def _normalize_jamendo_client_id(raw: str) -> str:
+    """
+    Accept common paste formats and normalize to raw Jamendo client_id.
+    Examples accepted:
+      - "abc123"
+      - "client_id=abc123"
+      - "https://...tracks/?client_id=abc123&format=json"
+    """
+    from urllib.parse import parse_qs, urlparse
+
+    value = (raw or "").strip()
+    if not value:
+        return ""
+
+    if "://" in value:
+        parsed = urlparse(value)
+        q = parse_qs(parsed.query or "")
+        if q.get("client_id"):
+            return (q["client_id"][0] or "").strip()
+        return value
+
+    if "client_id=" in value:
+        tail = value.split("client_id=", 1)[1]
+        # Handle optional "&..." suffix if user pasted a query fragment.
+        return tail.split("&", 1)[0].strip()
+
+    return value
+
+
 async def _jamendo_generate(
     emotion: str,
     duration: int,
@@ -247,6 +276,10 @@ async def _jamendo_generate(
     Search Jamendo tracks and download the closest-duration MP3.
     Uses API v3.0 /tracks endpoint with client_id auth.
     """
+    client_id = _normalize_jamendo_client_id(client_id)
+    if not client_id:
+        return None
+
     tags = EMOTION_TO_JAMENDO_TAGS.get(emotion, "ambient background")
     min_dur = max(15, duration - 45)
     max_dur = min(600, duration + 45)
