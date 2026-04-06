@@ -26,8 +26,8 @@ MOCK_AUDIO_BYTES = b"MOCK_AUDIO"   # Returned when API key not set
 # Cache helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _cache_key(text: str, voice_id: str, model_id: str) -> str:
-    content = f"{text}|{voice_id}|{model_id}"
+def _cache_key(text: str, voice_id: str, model_id: str, emotion: str, key_mode: str) -> str:
+    content = f"{text}|{voice_id}|{model_id}|{emotion}|{key_mode}"
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
@@ -94,6 +94,7 @@ def synthesize_segment(
     segment_id: str,
     emotion: str = "neutral",
     model_id: str = None,
+    elevenlabs_api_key: Optional[str] = None,
     max_retries: int = 3,
 ) -> Path:
     """
@@ -101,7 +102,12 @@ def synthesize_segment(
     Returns the path to the saved audio file.
     """
     model_id = model_id or settings.ELEVENLABS_MODEL_ID
-    cache_key = _cache_key(text, voice_id, model_id)
+
+    # Allow per-request key override (user key), fallback to env-level key.
+    active_api_key = elevenlabs_api_key or settings.ELEVENLABS_API_KEY
+    key_mode = "real" if active_api_key else "mock"
+
+    cache_key = _cache_key(text, voice_id, model_id, emotion, key_mode)
     out_path = _cached_path(cache_key, book_id)
 
     # Return from cache if available
@@ -110,7 +116,7 @@ def synthesize_segment(
         return out_path
 
     # No API key → mock mode
-    if not settings.ELEVENLABS_API_KEY:
+    if not active_api_key:
         logger.warning("No ELEVENLABS_API_KEY set — using mock TTS audio")
         return _generate_mock_audio(text, out_path)
 
@@ -120,7 +126,7 @@ def synthesize_segment(
         try:
             from elevenlabs.client import ElevenLabs
             from elevenlabs import VoiceSettings
-            client = ElevenLabs(api_key=settings.ELEVENLABS_API_KEY)
+            client = ElevenLabs(api_key=active_api_key)
 
             audio_iterator = client.text_to_speech.convert(
                 text=text,
@@ -171,13 +177,14 @@ async def synthesize_segment_async(
     segment_id: str,
     emotion: str = "neutral",
     model_id: str = None,
+    elevenlabs_api_key: Optional[str] = None,
 ) -> Path:
     """Async wrapper around synchronous synthesize_segment."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         None,
         synthesize_segment,
-        text, voice_id, book_id, segment_id, emotion, model_id
+        text, voice_id, book_id, segment_id, emotion, model_id, elevenlabs_api_key
     )
 
 

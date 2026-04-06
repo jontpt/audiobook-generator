@@ -8,12 +8,13 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Form, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Form, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import JSONResponse
 
 from config import settings
 from models.schemas import Book, ProcessingStatus
 from models.database import db
+from api.routes.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/books", tags=["Books"])
@@ -33,6 +34,7 @@ async def upload_book(
     add_music: bool = Form(default=False),
     export_format: str = Form(default="mp3"),
     music_volume_db: float = Form(default=-18.0),   # dB range configured in settings
+    current_user: dict = Depends(get_current_user),
 ):
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -56,6 +58,7 @@ async def upload_book(
 
     book = Book(
         id=book_id,
+        user_id=current_user.get("id"),
         title=title or Path(file.filename).stem.replace("_", " ").replace("-", " ").title(),
         author=author or "Unknown",
         file_path=str(upload_path),

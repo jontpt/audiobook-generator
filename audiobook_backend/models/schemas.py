@@ -123,6 +123,7 @@ class BookCreate(BaseModel):
 
 class Book(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = None
     title: str = "Untitled Book"
     author: str = "Unknown Author"
     file_path: Optional[str] = None

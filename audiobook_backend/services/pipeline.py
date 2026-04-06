@@ -7,6 +7,7 @@ Broadcasts real-time progress over WebSocket (ws_manager).
 from __future__ import annotations
 import asyncio
 import logging
+from functools import partial
 from pathlib import Path
 from datetime import datetime
 
@@ -109,6 +110,18 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
                     {"voice_id": voice_assignment[char_name]}
                 )
 
+        # Resolve owner-scoped API keys once for this run.
+        book_record = await db.get_by_id(db.books, book_id) or {}
+        user_id = book_record.get("user_id")
+        elevenlabs_api_key = None
+        if user_id:
+            from api.routes.settings import get_user_api_key
+            elevenlabs_api_key = get_user_api_key(user_id, "elevenlabs")
+            if elevenlabs_api_key:
+                logger.info(f"[{book_id[:8]}] Using user-scoped ElevenLabs API key")
+        if not elevenlabs_api_key:
+            elevenlabs_api_key = settings.ELEVENLABS_API_KEY or None
+
         # ─── 4. TTS synthesis ────────────────────────────────────────────────
         await _update(book_id, "synthesizing", 0.42, "Generating voice audio…")
 
@@ -119,10 +132,18 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
         for seg in segments:
             speaker  = seg.get("speaker")
             voice_id = _resolve_voice(voice_assignment, speaker)
+            synth_call = partial(
+                synthesize_segment,
+                text=seg["text"],
+                voice_id=voice_id,
+                book_id=book_id,
+                segment_id=seg["id"],
+                emotion=seg.get("emotion", "neutral"),
+                elevenlabs_api_key=elevenlabs_api_key,
+            )
             audio_path = await asyncio.get_event_loop().run_in_executor(
                 None,
-                synthesize_segment,
-                seg["text"], voice_id, book_id, seg["id"], seg.get("emotion", "neutral"),
+                synth_call,
             )
             if audio_path:
                 await db.update_by_id(db.segments, seg["id"],
