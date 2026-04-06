@@ -21,7 +21,7 @@ async def trigger_export(
     background_tasks: BackgroundTasks,
     export_format: str = "mp3",
     add_music: bool = False,
-    music_volume_db: float = -18.0,   # ← NEW: range –30 (subtle) to –6 (loud)
+    music_volume_db: float = -18.0,   # dB range configured in settings
 ):
     book = await db.get_by_id(db.books, book_id)
     if not book:
@@ -32,8 +32,11 @@ async def trigger_export(
     if not file_path_str or not Path(file_path_str).exists():
         raise HTTPException(400, "Source file no longer available. Please re-upload.")
 
-    # Clamp to safe range
-    music_volume_db = max(-40.0, min(-3.0, music_volume_db))
+    # Clamp to configured safe range so bad client values cannot break mixing.
+    music_volume_db = max(
+        settings.MUSIC_VOLUME_MIN_DB,
+        min(settings.MUSIC_VOLUME_MAX_DB, music_volume_db),
+    )
 
     from models.schemas import ProcessingOptions, ExportFormat
     options = ProcessingOptions(

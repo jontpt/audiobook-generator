@@ -32,7 +32,7 @@ async def upload_book(
     author: str = Form(default=""),
     add_music: bool = Form(default=False),
     export_format: str = Form(default="mp3"),
-    music_volume_db: float = Form(default=-18.0),   # ← NEW: range –30 (subtle) to –6 (loud)
+    music_volume_db: float = Form(default=-18.0),   # dB range configured in settings
 ):
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -43,8 +43,11 @@ async def upload_book(
     if size_mb > MAX_FILE_SIZE_MB:
         raise HTTPException(413, f"File too large ({size_mb:.1f} MB). Max: {MAX_FILE_SIZE_MB} MB")
 
-    # Clamp to safe range so a bad client value can't break the mixer
-    music_volume_db = max(-40.0, min(-3.0, music_volume_db))
+    # Clamp to configured safe range so bad client values cannot break mixing.
+    music_volume_db = max(
+        settings.MUSIC_VOLUME_MIN_DB,
+        min(settings.MUSIC_VOLUME_MAX_DB, music_volume_db),
+    )
 
     book_id   = str(uuid.uuid4())
     safe_name = f"{book_id}{ext}"

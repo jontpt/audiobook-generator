@@ -63,7 +63,8 @@ def assemble_chapter(
         from pydub import AudioSegment
         from pydub.effects import normalize
 
-        music_volume_db = music_volume_db or settings.MUSIC_VOLUME_DB
+        # Preserve explicit 0.0dB requests; only default when value is missing.
+        music_volume_db = settings.MUSIC_VOLUME_DB if music_volume_db is None else music_volume_db
         speech_pause = AudioSegment.silent(duration=settings.SPEECH_PAUSE_MS)
 
         # ── 1. Build narration track ─────────────────────────────────────────

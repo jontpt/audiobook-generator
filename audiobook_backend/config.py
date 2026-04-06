@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     # ── Audio ─────────────────────────────────────────────────────────────────
     AUDIO_FORMAT:     str   = "mp3"
     MUSIC_VOLUME_DB:  float = -18.0
+    MUSIC_VOLUME_MIN_DB: float = -30.0
+    MUSIC_VOLUME_MAX_DB: float = -6.0
     SPEECH_PAUSE_MS:  int   = 350
     CHAPTER_PAUSE_MS: int   = 2000
 
