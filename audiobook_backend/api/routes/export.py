@@ -22,6 +22,8 @@ async def trigger_export(
     export_format: str = "mp3",
     add_music: bool = False,
     music_volume_db: float = -18.0,   # dB range configured in settings
+    music_type: str = "auto",
+    music_style: str = "cinematic",
 ):
     book = await db.get_by_id(db.books, book_id)
     if not book:
@@ -43,6 +45,8 @@ async def trigger_export(
         export_format=ExportFormat(export_format),
         add_background_music=add_music,
         music_volume_db=music_volume_db,   # ← NEW
+        music_type=music_type,
+        music_style=music_style,
     )
     await db.update_by_id(db.books, book_id, {
         "status": "pending", "progress": 0.0,

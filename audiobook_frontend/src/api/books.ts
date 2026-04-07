@@ -31,6 +31,8 @@ export const booksApi = {
     addMusic: boolean = false,
     exportFormat: string = 'mp3',
     musicVolumeDb: number = -18.0,   // ← NEW: dB value, range -30 to -6
+    musicProvider: string = 'auto',
+    musicStyle: string = 'match_chapter',
   ) => {
     const form = new FormData();
     form.append('file', file);
@@ -39,6 +41,8 @@ export const booksApi = {
     form.append('add_music', String(addMusic));
     form.append('export_format', exportFormat);
     form.append('music_volume_db', String(musicVolumeDb));   // ← NEW
+    form.append('music_provider', musicProvider);
+    form.append('music_style', musicStyle);
     const res = await apiClient.post('/books/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => {
@@ -58,9 +62,17 @@ export const booksApi = {
     format: string = 'mp3',
     addMusic: boolean = false,
     musicVolumeDb: number = -18.0,   // ← NEW
+    musicProvider: string = 'auto',
+    musicStyle: string = 'match_chapter',
   ) => {
     const res = await apiClient.post(`/export/${id}`, null, {
-      params: { export_format: format, add_music: addMusic, music_volume_db: musicVolumeDb },
+      params: {
+        export_format: format,
+        add_music: addMusic,
+        music_volume_db: musicVolumeDb,
+        music_provider: musicProvider,
+        music_style: musicStyle,
+      },
     });
     return res.data;
   },

@@ -51,41 +51,70 @@ EMOTION_TO_SOUNDRAW_MOOD: dict[str, str] = {
 }
 
 
+MUSIC_TYPE_TO_PROVIDER_ORDER: dict[str, tuple[str, ...]] = {
+    "auto": ("mubert", "soundraw", "jamendo"),
+    "cinematic": ("soundraw", "jamendo", "mubert"),
+    "ambient": ("jamendo", "soundraw", "mubert"),
+    "energetic": ("mubert", "soundraw", "jamendo"),
+}
+
+STYLE_TO_TAG_HINT: dict[str, str] = {
+    "auto": "",
+    "ambient": "ambient",
+    "cinematic": "cinematic",
+    "electronic": "electronic",
+    "orchestral": "orchestral",
+    "piano": "piano",
+}
+
+
+def _provider_order(music_type: str) -> tuple[str, ...]:
+    return MUSIC_TYPE_TO_PROVIDER_ORDER.get(music_type, MUSIC_TYPE_TO_PROVIDER_ORDER["auto"])
+
+
 async def get_background_music(
     emotion: str,
     duration_seconds: int = 120,
     mubert_api_key: Optional[str] = None,
     soundraw_api_key: Optional[str] = None,
     jamendo_client_id: Optional[str] = None,
+    music_type: str = "auto",
+    music_style: str = "auto",
 ) -> Optional[Path]:
     """
     Try each provider in order and return a local Path to an MP3 file,
     or None if no music could be obtained.
     """
     # Build cache key so the same (emotion, duration) reuses the file
-    cache_key = hashlib.md5(f"{emotion}_{duration_seconds}".encode()).hexdigest()[:12]
+    cache_key = hashlib.md5(
+        f"{emotion}_{duration_seconds}_{music_type}_{music_style}".encode()
+    ).hexdigest()[:12]
     cached = _MUSIC_CACHE_DIR / f"{cache_key}.mp3"
     if cached.exists() and cached.stat().st_size > 1000:
         logger.info(f"Music cache hit: {cached.name}")
         return cached
 
-    # Try Mubert first
-    if mubert_api_key:
-        path = await _mubert_generate(emotion, duration_seconds, mubert_api_key, cached)
-        if path:
-            return path
-
-    # Try Soundraw
-    if soundraw_api_key:
-        path = await _soundraw_generate(emotion, duration_seconds, soundraw_api_key, cached)
-        if path:
-            return path
-
-    # Try Jamendo (free-tier friendly fallback)
-    if jamendo_client_id:
-        path = await _jamendo_generate(emotion, duration_seconds, jamendo_client_id, cached)
-        if path:
-            return path
+    providers = _provider_order(music_type)
+    style_hint = STYLE_TO_TAG_HINT.get(music_style, "")
+    for provider in providers:
+        if provider == "mubert" and mubert_api_key:
+            path = await _mubert_generate(
+                emotion, duration_seconds, mubert_api_key, cached, style_hint=style_hint
+            )
+            if path:
+                return path
+        if provider == "soundraw" and soundraw_api_key:
+            path = await _soundraw_generate(
+                emotion, duration_seconds, soundraw_api_key, cached, style_hint=music_style
+            )
+            if path:
+                return path
+        if provider == "jamendo" and jamendo_client_id:
+            path = await _jamendo_generate(
+                emotion, duration_seconds, jamendo_client_id, cached, style_hint=style_hint
+            )
+            if path:
+                return path
 
     # Both failed or no keys
     logger.warning(f"No music generated for emotion='{emotion}' — music disabled")
@@ -101,12 +130,15 @@ async def _mubert_generate(
     duration: int,
     api_key: str,
     dest: Path,
+    style_hint: str = "",
 ) -> Optional[Path]:
     """
     Call Mubert Render API to generate a track matching emotion tags.
     Docs: https://api-b2b.mubert.com/v2/
     """
     tags = EMOTION_TO_MUBERT_TAGS.get(emotion, ["ambient"])
+    if style_hint:
+        tags = list(dict.fromkeys([*tags, style_hint]))
     payload = {
         "method":  "RecordTrackTTM",
         "params": {
@@ -177,13 +209,22 @@ async def _soundraw_generate(
     duration: int,
     api_key: str,
     dest: Path,
+    style_hint: str = "auto",
 ) -> Optional[Path]:
     """
     Call Soundraw API to generate a track.
     Docs: https://soundraw.io/api  (beta – key obtained from soundraw.io/api_access)
     """
     mood  = EMOTION_TO_SOUNDRAW_MOOD.get(emotion, "Calm")
-    genre = "Ambient"
+    genre_map = {
+        "auto": "Ambient",
+        "ambient": "Ambient",
+        "cinematic": "Cinematic",
+        "electronic": "Electronic",
+        "orchestral": "Orchestral",
+        "piano": "Acoustic",
+    }
+    genre = genre_map.get(style_hint, "Ambient")
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
@@ -271,6 +312,7 @@ async def _jamendo_generate(
     duration: int,
     client_id: str,
     dest: Path,
+    style_hint: str = "",
 ) -> Optional[Path]:
     """
     Search Jamendo tracks and download the closest-duration MP3.
@@ -281,6 +323,8 @@ async def _jamendo_generate(
         return None
 
     tags = EMOTION_TO_JAMENDO_TAGS.get(emotion, "ambient background")
+    if style_hint:
+        tags = f"{tags} {style_hint}".strip()
     min_dur = max(15, duration - 45)
     max_dur = min(600, duration + 45)
     params = {

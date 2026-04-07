@@ -75,6 +75,16 @@ export interface TextSegment {
   duration_ms?: number;
 }
 
+export type MusicProvider = 'auto' | 'mubert' | 'soundraw' | 'jamendo';
+export type MusicStylePreset =
+  | 'auto'
+  | 'cinematic'
+  | 'ambient'
+  | 'lofi'
+  | 'orchestral'
+  | 'piano'
+  | 'electronic';
+
 export interface Book {
   id: string;
   title: string;

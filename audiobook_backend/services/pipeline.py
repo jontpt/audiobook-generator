@@ -282,9 +282,11 @@ async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | N
     from services.music_service import get_background_music
     from api.routes.settings import get_user_api_key
 
-    # Find the book owner's API keys
+    # Find book + owner-scoped API keys
     book = await db.get_by_id(db.books, book_id)
     user_id = book.get("user_id", "")
+    preferred_provider = book.get("music_provider_preference", "auto")
+    style_preset = book.get("music_style_preset", "cinematic")
 
     mubert_key   = get_user_api_key(user_id, "mubert")   if user_id else None
     soundraw_key = get_user_api_key(user_id, "soundraw") if user_id else None
@@ -303,5 +305,7 @@ async def _fetch_music(book_id: str, chapters: list[dict]) -> dict[str, Path | N
             mubert_api_key=mubert_key,
             soundraw_api_key=soundraw_key,
             jamendo_client_id=jamendo_key,
+            provider_preference=preferred_provider,
+            style_preset=style_preset,
         )
     return result

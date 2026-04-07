@@ -44,6 +44,9 @@ const VolumeIcon = ({ v }: { v: number }) => {
   return              <Volume2  size={14} className="text-accent-teal" />;
 };
 
+type MusicProvider = 'auto' | 'jamendo' | 'mubert' | 'soundraw';
+type MusicStylePreset = 'cinematic' | 'ambient' | 'electronic' | 'acoustic' | 'orchestral';
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const UploadPage: React.FC = () => {
@@ -58,6 +61,8 @@ export const UploadPage: React.FC = () => {
   const [musicSlider, setMusicSlider]   = useState(dbToSlider(-18)); // 50
   const [exportFormat, setExportFormat] = useState<'mp3' | 'm4b'>('mp3');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [musicProvider, setMusicProvider] = useState<MusicProvider>('auto');
+  const [musicStylePreset, setMusicStylePreset] = useState<MusicStylePreset>('ambient');
 
   const navigate    = useNavigate();
   const queryClient = useQueryClient();
@@ -90,6 +95,8 @@ export const UploadPage: React.FC = () => {
         addMusic,
         exportFormat,
         sliderToDb(musicSlider),   // convert slider → dB before sending
+        musicProvider,
+        musicStylePreset,
       );
       queryClient.invalidateQueries({ queryKey: ['books'] });
       toast.success('Upload successful! Processing has started.');
@@ -105,6 +112,8 @@ export const UploadPage: React.FC = () => {
   // Badge shown in collapsed header when non-default options are active
   const optionBadges = [
     addMusic && `🎵 ${volumeLabel(musicSlider)}`,
+    addMusic && musicProvider !== 'auto' && `Provider: ${musicProvider}`,
+    addMusic && `Style: ${musicStylePreset}`,
     exportFormat === 'm4b' && 'M4B',
   ].filter(Boolean).join(' · ');
 
@@ -244,7 +253,7 @@ export const UploadPage: React.FC = () => {
                           <p className="text-xs text-dark-500 mt-1">
                             Requires a{' '}
                             <Link to="/settings" className="text-brand-400 hover:underline">
-                              Mubert or Soundraw API key
+                              Jamendo, Mubert, or Soundraw API key
                             </Link>{' '}
                             in Settings.
                           </p>
@@ -346,6 +355,70 @@ export const UploadPage: React.FC = () => {
                         </motion.div>
                       )}
                     </AnimatePresence>
+
+                    {/* ── Music provider & style controls ─────────────────── */}
+                    <AnimatePresence>
+                      {addMusic && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.18 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="ml-11 space-y-3">
+                            <div>
+                              <p className="text-xs text-dark-300 mb-2 font-medium">Music Type / Provider</p>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                {([
+                                  { value: 'auto', label: 'Auto' },
+                                  { value: 'jamendo', label: 'Jamendo' },
+                                  { value: 'mubert', label: 'Mubert' },
+                                  { value: 'soundraw', label: 'Soundraw' },
+                                ] as const).map(opt => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setMusicProvider(opt.value)}
+                                    className={`px-2 py-1.5 rounded-lg border text-xs transition-all
+                                      ${musicProvider === opt.value
+                                        ? 'border-brand-500/60 bg-brand-500/10 text-brand-300'
+                                        : 'border-dark-700 bg-dark-900/40 text-dark-300 hover:border-dark-600'}`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-dark-300 mb-2 font-medium">Music Style</p>
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                {([
+                                  { value: 'ambient', label: 'Ambient' },
+                                  { value: 'cinematic', label: 'Cinematic' },
+                                  { value: 'orchestral', label: 'Orchestral' },
+                                  { value: 'acoustic', label: 'Acoustic' },
+                                  { value: 'electronic', label: 'Electronic' },
+                                ] as const).map(opt => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setMusicStylePreset(opt.value)}
+                                    className={`px-2 py-1.5 rounded-lg border text-xs transition-all
+                                      ${musicStylePreset === opt.value
+                                        ? 'border-accent-teal/70 bg-accent-teal/10 text-accent-teal'
+                                        : 'border-dark-700 bg-dark-900/40 text-dark-300 hover:border-dark-600'}`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* ── Export Format ────────────────────────────────────── */}
@@ -418,7 +491,7 @@ export const UploadPage: React.FC = () => {
             ['🧠', 'Analyze',    'NLP detects dialogue, characters & emotions'],
             ['🎙️', 'Synthesize', 'ElevenLabs generates distinct voices per character'],
             ['🎵', 'Mix',        addMusic
-              ? `Audio assembled with ${volumeLabel(musicSlider).toLowerCase()} background music matched to chapter mood`
+              ? `Audio assembled with ${volumeLabel(musicSlider).toLowerCase()} ${musicStylePreset} background music (${musicProvider === 'auto' ? 'auto provider' : musicProvider}) matched to chapter mood`
               : 'Audio assembled with optional background music'],
           ].map(([icon, step, desc]) => (
             <div key={step as string} className="flex items-start gap-3">

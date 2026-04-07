@@ -175,6 +175,8 @@ class ProcessingOptions(BaseModel):
     export_format: ExportFormat = ExportFormat.MP3
     speech_rate: float = 1.0          # 0.7 – 1.3
     music_volume_db: float = -18.0
+    music_type: str = "auto"          # auto | ambient | cinematic | electronic | acoustic | lofi
+    music_style: str = "auto"         # auto | subtle | balanced | epic | dark | uplifting | calm
     include_sfx: bool = False
 
 

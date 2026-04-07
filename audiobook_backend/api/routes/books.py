@@ -34,6 +34,8 @@ async def upload_book(
     add_music: bool = Form(default=False),
     export_format: str = Form(default="mp3"),
     music_volume_db: float = Form(default=-18.0),   # dB range configured in settings
+    music_provider: str = Form(default="auto"),
+    music_style: str = Form(default="cinematic"),
     current_user: dict = Depends(get_current_user),
 ):
     ext = Path(file.filename).suffix.lower()
@@ -73,6 +75,8 @@ async def upload_book(
         add_background_music=add_music,
         export_format=ExportFormat(export_format),
         music_volume_db=music_volume_db,   # ← NEW
+        music_provider=music_provider,
+        music_style=music_style,
     )
 
     # Dispatch to Celery if configured, else use BackgroundTasks

@@ -12,6 +12,21 @@ import { Button } from '../components/UI/Button';
 import { useBookProgress } from '../hooks/useBookProgress';
 import toast from 'react-hot-toast';
 
+const MUSIC_STYLE_OPTIONS = [
+  { value: 'auto', label: 'Auto', desc: 'Match chapter emotion' },
+  { value: 'ambient', label: 'Ambient', desc: 'Soft neutral bed' },
+  { value: 'cinematic', label: 'Cinematic', desc: 'Orchestral / dramatic' },
+  { value: 'lofi', label: 'Lo-fi', desc: 'Light beats / chill' },
+  { value: 'piano', label: 'Piano', desc: 'Minimal piano texture' },
+];
+
+const MUSIC_PROVIDER_OPTIONS = [
+  { value: 'auto', label: 'Auto provider' },
+  { value: 'mubert', label: 'Mubert' },
+  { value: 'soundraw', label: 'Soundraw' },
+  { value: 'jamendo', label: 'Jamendo' },
+];
+
 const STEP_LABELS: Record<string, string> = {
   pending:      'Waiting to start…',
   extracting:   'Extracting text from file…',
@@ -43,6 +58,10 @@ export const BookDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
+  const [showReExportOptions, setShowReExportOptions] = useState(false);
+  const [reExportAddMusic, setReExportAddMusic] = useState(false);
+  const [reExportStyle, setReExportStyle] = useState<'auto' | 'ambient' | 'cinematic' | 'lofi' | 'piano'>('auto');
+  const [reExportProvider, setReExportProvider] = useState<'auto' | 'mubert' | 'soundraw' | 'jamendo'>('auto');
 
   // REST — poll every 3 s while not terminal, stop once done
   const { data: book, isLoading } = useQuery({
@@ -88,7 +107,14 @@ export const BookDetailPage: React.FC = () => {
     if (!id) return;
     setExporting(true);
     try {
-      await booksApi.reExport(id);
+      await booksApi.reExport(
+        id,
+        'mp3',
+        reExportAddMusic,
+        -18.0,
+        reExportStyle,
+        reExportProvider,
+      );
       queryClient.invalidateQueries({ queryKey: ['book', id] });
       toast.success('Re-export started');
     } catch { toast.error('Re-export failed'); }
@@ -141,8 +167,23 @@ export const BookDetailPage: React.FC = () => {
           <Badge type="status" value={status} />
           {status === 'completed' && (
             <>
-              <Button variant="ghost" size="sm" icon={<RefreshCw size={14} />}
-                onClick={handleReExport} loading={exporting}>Re-export</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<RefreshCw size={14} />}
+                onClick={() => setShowReExportOptions(v => !v)}
+              >
+                Re-export Options
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<RefreshCw size={14} />}
+                onClick={handleReExport}
+                loading={exporting}
+              >
+                Re-export
+              </Button>
               <a href={booksApi.downloadUrl(id!)} download>
                 <Button variant="primary" size="sm" icon={<Download size={14} />}>Download MP3</Button>
               </a>
@@ -150,6 +191,70 @@ export const BookDetailPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {status === 'completed' && showReExportOptions && (
+          <motion.div
+            className="bg-dark-800/60 border border-dark-700 rounded-2xl p-4 mb-6"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+          >
+            <div className="flex items-center justify-between gap-4 mb-3">
+              <div>
+                <p className="text-sm font-medium text-white">Re-export background music</p>
+                <p className="text-xs text-dark-400">Apply music settings for the next export run.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReExportAddMusic(v => !v)}
+                className={`relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ${
+                  reExportAddMusic ? 'bg-accent-teal' : 'bg-dark-600'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform duration-200 ${
+                    reExportAddMusic ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {reExportAddMusic && (
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-dark-400 block mb-1">Style preset</label>
+                  <select
+                    value={reExportStyle}
+                    onChange={(e) => setReExportStyle(e.target.value as any)}
+                    className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-2 text-sm text-white"
+                  >
+                    {MUSIC_STYLE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} — {opt.desc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-dark-400 block mb-1">Provider</label>
+                  <select
+                    value={reExportProvider}
+                    onChange={(e) => setReExportProvider(e.target.value as any)}
+                    className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-2 text-sm text-white"
+                  >
+                    {MUSIC_PROVIDER_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {(isProcessing || status === 'failed') && (
