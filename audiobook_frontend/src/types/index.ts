@@ -80,7 +80,6 @@ export type MusicStylePreset =
   | 'auto'
   | 'cinematic'
   | 'ambient'
-  | 'lofi'
   | 'orchestral'
   | 'piano'
   | 'electronic';
@@ -89,6 +88,9 @@ export interface Book {
   id: string;
   title: string;
   author: string;
+  status_reason?: string;
+  draft_characters?: Character[];
+  character_voice_candidates?: Record<string, string[]>;
   file_type?: string;
   status: ProcessingStatus;
   progress: number;

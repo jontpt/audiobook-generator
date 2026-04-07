@@ -1,5 +1,11 @@
 import apiClient from './client';
-import type { Book, TextSegment } from '../types';
+import type {
+  Book,
+  TextSegment,
+  Character,
+  MusicProvider,
+  MusicStylePreset,
+} from '../types';
 
 export const booksApi = {
   list: async (): Promise<Book[]> => {
@@ -31,8 +37,9 @@ export const booksApi = {
     addMusic: boolean = false,
     exportFormat: string = 'mp3',
     musicVolumeDb: number = -18.0,   // ← NEW: dB value, range -30 to -6
-    musicProvider: string = 'auto',
-    musicStyle: string = 'match_chapter',
+    musicProvider: MusicProvider = 'auto',
+    musicStyle: MusicStylePreset = 'auto',
+    voiceAssignments: { character_name: string; voice_id: string }[] = [],
   ) => {
     const form = new FormData();
     form.append('file', file);
@@ -43,11 +50,56 @@ export const booksApi = {
     form.append('music_volume_db', String(musicVolumeDb));   // ← NEW
     form.append('music_provider', musicProvider);
     form.append('music_style', musicStyle);
+    if (voiceAssignments.length > 0) {
+      form.append('voice_assignments_json', JSON.stringify(voiceAssignments));
+    }
     const res = await apiClient.post('/books/upload', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: (e) => {
         if (e.total && onProgress) onProgress(Math.round((e.loaded * 100) / e.total));
       },
+    });
+    return res.data;
+  },
+
+  parseCharacters: async (
+    file: File,
+    title: string,
+    author: string,
+  ): Promise<{ characters: Character[]; suggestions_count: number }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    form.append('author', author);
+    const res = await apiClient.post('/books/parse-characters', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  startWithVoiceAssignments: async (
+    file: File,
+    title: string,
+    author: string,
+    assignments: { character_name: string; voice_id: string }[],
+    addMusic: boolean = false,
+    exportFormat: string = 'mp3',
+    musicVolumeDb: number = -18.0,
+    musicProvider: MusicProvider = 'auto',
+    musicStyle: MusicStylePreset = 'auto',
+  ) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    form.append('author', author);
+    form.append('add_music', String(addMusic));
+    form.append('export_format', exportFormat);
+    form.append('music_volume_db', String(musicVolumeDb));
+    form.append('music_provider', musicProvider);
+    form.append('music_style', musicStyle);
+    form.append('voice_assignments_json', JSON.stringify(assignments));
+    const res = await apiClient.post('/books/start-with-voices', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data;
   },
@@ -62,8 +114,8 @@ export const booksApi = {
     format: string = 'mp3',
     addMusic: boolean = false,
     musicVolumeDb: number = -18.0,   // ← NEW
-    musicProvider: string = 'auto',
-    musicStyle: string = 'match_chapter',
+    musicProvider: MusicProvider = 'auto',
+    musicStyle: MusicStylePreset = 'auto',
   ) => {
     const res = await apiClient.post(`/export/${id}`, null, {
       params: {

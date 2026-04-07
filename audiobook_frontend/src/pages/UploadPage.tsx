@@ -4,13 +4,15 @@ import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload, X, CheckCircle, AlertCircle, ArrowRight,
-  Music, Settings, ChevronDown, ChevronUp, Volume1, Volume2, VolumeX,
+  Music, Settings, ChevronDown, ChevronUp, Volume1, Volume2, VolumeX, Wand2,
 } from 'lucide-react';
 import { booksApi } from '../api/books';
+import { voicesApi } from '../api/characters';
 import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import type { Character, MusicProvider, MusicStylePreset } from '../types';
 
 const ACCEPT = {
   'application/pdf': ['.pdf'],
@@ -44,8 +46,7 @@ const VolumeIcon = ({ v }: { v: number }) => {
   return              <Volume2  size={14} className="text-accent-teal" />;
 };
 
-type MusicProvider = 'auto' | 'jamendo' | 'mubert' | 'soundraw';
-type MusicStylePreset = 'cinematic' | 'ambient' | 'electronic' | 'acoustic' | 'orchestral';
+type AssignmentItem = { character_name: string; voice_id: string };
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,9 +64,17 @@ export const UploadPage: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [musicProvider, setMusicProvider] = useState<MusicProvider>('auto');
   const [musicStylePreset, setMusicStylePreset] = useState<MusicStylePreset>('ambient');
+  const [showCharacterGuide, setShowCharacterGuide] = useState(false);
+  const [characterDraft, setCharacterDraft] = useState<Character[]>([]);
+  const [parsingCharacters, setParsingCharacters] = useState(false);
 
   const navigate    = useNavigate();
   const queryClient = useQueryClient();
+  const { data: voices = [] } = useQuery({
+    queryKey: ['voices-for-upload-plan'],
+    queryFn: () => voicesApi.list(),
+    staleTime: 120_000,
+  });
 
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) {
@@ -87,11 +96,15 @@ export const UploadPage: React.FC = () => {
     if (!file) return;
     setUploading(true);
     try {
-      const result = await booksApi.upload(
+      const assignments: AssignmentItem[] = characterDraft
+        .filter(c => !!c.voice_id)
+        .map(c => ({ character_name: c.name, voice_id: String(c.voice_id) }));
+
+      const result = await booksApi.startWithVoiceAssignments(
         file,
         title,
         author || 'Unknown',
-        pct => setUploadPct(pct),
+        assignments,
         addMusic,
         exportFormat,
         sliderToDb(musicSlider),   // convert slider → dB before sending
@@ -114,8 +127,35 @@ export const UploadPage: React.FC = () => {
     addMusic && `🎵 ${volumeLabel(musicSlider)}`,
     addMusic && musicProvider !== 'auto' && `Provider: ${musicProvider}`,
     addMusic && `Style: ${musicStylePreset}`,
+    characterDraft.length > 0 && `Voices: ${characterDraft.length}`,
     exportFormat === 'm4b' && 'M4B',
   ].filter(Boolean).join(' · ');
+
+  const parseCharacterDraft = async () => {
+    if (!file) {
+      toast.error('Upload a file first');
+      return;
+    }
+    setParsingCharacters(true);
+    try {
+      const result = await booksApi.parseCharacters(file, title, author || 'Unknown');
+      setCharacterDraft(result.characters || []);
+      if (!result.characters?.length) {
+        toast('No character dialogue detected. Narrator voice will be used.', { icon: 'ℹ️' });
+      } else {
+        toast.success(`Detected ${result.characters.length} characters`);
+      }
+      setShowCharacterGuide(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Could not parse characters');
+    } finally {
+      setParsingCharacters(false);
+    }
+  };
+
+  const setCharacterVoice = (idx: number, voiceId: string) => {
+    setCharacterDraft(prev => prev.map((c, i) => (i === idx ? { ...c, voice_id: voiceId || null } : c)));
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -247,8 +287,7 @@ export const UploadPage: React.FC = () => {
                         <div>
                           <p className="text-sm font-medium text-white">Background Music</p>
                           <p className="text-xs text-dark-400 mt-0.5">
-                            AI-generated ambient music matched to each chapter's emotion,
-                            ducked under the narration.
+                            AI-generated background music for each chapter, ducked under narration.
                           </p>
                           <p className="text-xs text-dark-500 mt-1">
                             Requires a{' '}
@@ -256,6 +295,10 @@ export const UploadPage: React.FC = () => {
                               Jamendo, Mubert, or Soundraw API key
                             </Link>{' '}
                             in Settings.
+                          </p>
+                          <p className="text-xs text-dark-500 mt-1">
+                            Tip: Use a <span className="font-mono">CHARACTERS:</span> block to predefine names,
+                            genders, and optional voice hints before processing.
                           </p>
                         </div>
                       </div>
@@ -395,10 +438,11 @@ export const UploadPage: React.FC = () => {
                               <p className="text-xs text-dark-300 mb-2 font-medium">Music Style</p>
                               <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                                 {([
+                                  { value: 'auto', label: 'Auto' },
                                   { value: 'ambient', label: 'Ambient' },
                                   { value: 'cinematic', label: 'Cinematic' },
                                   { value: 'orchestral', label: 'Orchestral' },
-                                  { value: 'acoustic', label: 'Acoustic' },
+                                  { value: 'piano', label: 'Piano' },
                                   { value: 'electronic', label: 'Electronic' },
                                 ] as const).map(opt => (
                                   <button
@@ -447,6 +491,97 @@ export const UploadPage: React.FC = () => {
                     </div>
                   </div>
 
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ── Character Voice Plan (pre-processing) ───────────────────────── */}
+        <div className="bg-dark-800/60 border border-dark-700 rounded-2xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowCharacterGuide(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-dark-700/40 transition-colors"
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-dark-200">
+              <span className="text-brand-400">🎭</span>
+              Character Voice Plan (before processing)
+              {characterDraft.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-md bg-brand-500/20 text-brand-300 text-xs">
+                  {characterDraft.length} planned
+                </span>
+              )}
+            </div>
+            {showCharacterGuide
+              ? <ChevronUp size={14} className="text-dark-400" />
+              : <ChevronDown size={14} className="text-dark-400" />}
+          </button>
+
+          <AnimatePresence>
+            {showCharacterGuide && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-4 pb-4 border-t border-dark-700 pt-4 space-y-4">
+                  <div className="text-xs text-dark-300 bg-dark-900/40 border border-dark-700 rounded-lg p-3">
+                    Optional direct mapping. The parser also understands this text format:
+                    <pre className="mt-2 whitespace-pre-wrap text-dark-400">{`CHARACTERS:
+Archer: male
+Archer: voice=Adam
+Wonderly: female
+Wonderly: voice=Rachel
+END CHARACTERS`}</pre>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs text-dark-400">
+                      Detect characters first, then choose each voice before processing.
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={parseCharacterDraft}
+                      loading={parsingCharacters}
+                      icon={<Wand2 size={14} />}
+                      disabled={!file}
+                    >
+                      Analyze Characters
+                    </Button>
+                  </div>
+
+                  {characterDraft.length > 0 && (
+                    <div className="space-y-2">
+                      {characterDraft.map((item, idx) => (
+                        <div key={`${item.name}-${idx}`} className="flex items-center justify-between bg-dark-900/40 border border-dark-700 rounded-lg px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-sm text-white truncate">
+                              {item.name} · {item.gender}
+                            </p>
+                            <p className="text-xs text-dark-400">
+                              Appears {item.appearance_count}x
+                            </p>
+                          </div>
+                          <select
+                            value={item.voice_id ?? ''}
+                            onChange={(e) => setCharacterVoice(idx, e.target.value)}
+                            className="bg-dark-900 border border-dark-700 rounded-lg px-2 py-1.5 text-xs text-white min-w-[180px]"
+                          >
+                            <option value="">Auto (suggested)</option>
+                            {voices.map(v => (
+                              <option key={v.voice_id} value={v.voice_id}>
+                                {v.name} ({v.gender})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}

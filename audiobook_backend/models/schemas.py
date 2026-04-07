@@ -136,6 +136,9 @@ class Book(BaseModel):
     character_count: int = 0
     segment_count: int = 0
     total_words: int = 0
+    music_provider_preference: str = "auto"
+    music_style_preset: str = "auto"
+    character_voice_plan: dict[str, str] = Field(default_factory=dict)
 
     export_path: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -175,8 +178,9 @@ class ProcessingOptions(BaseModel):
     export_format: ExportFormat = ExportFormat.MP3
     speech_rate: float = 1.0          # 0.7 – 1.3
     music_volume_db: float = -18.0
-    music_type: str = "auto"          # auto | ambient | cinematic | electronic | acoustic | lofi
-    music_style: str = "auto"         # auto | subtle | balanced | epic | dark | uplifting | calm
+    music_type: str = "auto"          # auto | mubert | soundraw | jamendo
+    music_style: str = "auto"         # auto | ambient | cinematic | orchestral | piano | electronic
+    character_voice_overrides: dict[str, str] = Field(default_factory=dict)
     include_sfx: bool = False
 
 

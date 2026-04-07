@@ -16,8 +16,9 @@ const MUSIC_STYLE_OPTIONS = [
   { value: 'auto', label: 'Auto', desc: 'Match chapter emotion' },
   { value: 'ambient', label: 'Ambient', desc: 'Soft neutral bed' },
   { value: 'cinematic', label: 'Cinematic', desc: 'Orchestral / dramatic' },
-  { value: 'lofi', label: 'Lo-fi', desc: 'Light beats / chill' },
-  { value: 'piano', label: 'Piano', desc: 'Minimal piano texture' },
+  { value: 'orchestral', label: 'Orchestral', desc: 'Strings / epic score' },
+  { value: 'piano', label: 'Piano', desc: 'Warm organic texture' },
+  { value: 'electronic', label: 'Electronic', desc: 'Synth / modern bed' },
 ];
 
 const MUSIC_PROVIDER_OPTIONS = [
@@ -60,7 +61,7 @@ export const BookDetailPage: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [showReExportOptions, setShowReExportOptions] = useState(false);
   const [reExportAddMusic, setReExportAddMusic] = useState(false);
-  const [reExportStyle, setReExportStyle] = useState<'auto' | 'ambient' | 'cinematic' | 'lofi' | 'piano'>('auto');
+  const [reExportStyle, setReExportStyle] = useState<'auto' | 'ambient' | 'cinematic' | 'orchestral' | 'piano' | 'electronic'>('auto');
   const [reExportProvider, setReExportProvider] = useState<'auto' | 'mubert' | 'soundraw' | 'jamendo'>('auto');
 
   // REST — poll every 3 s while not terminal, stop once done
@@ -112,8 +113,8 @@ export const BookDetailPage: React.FC = () => {
         'mp3',
         reExportAddMusic,
         -18.0,
-        reExportStyle,
         reExportProvider,
+        reExportStyle,
       );
       queryClient.invalidateQueries({ queryKey: ['book', id] });
       toast.success('Re-export started');

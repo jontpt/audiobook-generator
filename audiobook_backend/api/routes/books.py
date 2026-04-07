@@ -3,6 +3,7 @@ api/routes/books.py  ─  Book management + WebSocket progress endpoint
 """
 from __future__ import annotations
 import uuid
+import json
 import logging
 import asyncio
 from datetime import datetime
@@ -12,7 +13,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks,
 from fastapi.responses import JSONResponse
 
 from config import settings
-from models.schemas import Book, ProcessingStatus
+from models.schemas import Book, ProcessingStatus, Character, Gender
 from models.database import db
 from api.routes.auth import get_current_user
 
@@ -21,6 +22,18 @@ router = APIRouter(prefix="/books", tags=["Books"])
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".epub", ".txt"}
 MAX_FILE_SIZE_MB = 50
+ALLOWED_MUSIC_PROVIDERS = {"auto", "mubert", "soundraw", "jamendo"}
+ALLOWED_MUSIC_STYLES = {"auto", "ambient", "cinematic", "orchestral", "electronic", "piano"}
+
+
+def _normalize_music_inputs(music_provider: str, music_style: str) -> tuple[str, str]:
+    music_provider = (music_provider or "auto").lower()
+    music_style = (music_style or "auto").lower()
+    if music_provider not in ALLOWED_MUSIC_PROVIDERS:
+        raise HTTPException(422, f"Unsupported music_provider '{music_provider}'")
+    if music_style not in ALLOWED_MUSIC_STYLES:
+        raise HTTPException(422, f"Unsupported music_style '{music_style}'")
+    return music_provider, music_style
 
 
 # ─── Upload ────────────────────────────────────────────────────────────────────
@@ -35,7 +48,8 @@ async def upload_book(
     export_format: str = Form(default="mp3"),
     music_volume_db: float = Form(default=-18.0),   # dB range configured in settings
     music_provider: str = Form(default="auto"),
-    music_style: str = Form(default="cinematic"),
+    music_style: str = Form(default="auto"),
+    voice_assignments_json: str = Form(default=""),
     current_user: dict = Depends(get_current_user),
 ):
     ext = Path(file.filename).suffix.lower()
@@ -52,6 +66,8 @@ async def upload_book(
         settings.MUSIC_VOLUME_MIN_DB,
         min(settings.MUSIC_VOLUME_MAX_DB, music_volume_db),
     )
+    music_provider, music_style = _normalize_music_inputs(music_provider, music_style)
+    voice_assignments = _parse_voice_assignments(voice_assignments_json)
 
     book_id   = str(uuid.uuid4())
     safe_name = f"{book_id}{ext}"
@@ -66,6 +82,9 @@ async def upload_book(
         file_path=str(upload_path),
         file_type=ext.lstrip("."),
         status=ProcessingStatus.PENDING,
+        music_provider_preference=music_provider,
+        music_style_preset=music_style,
+        character_voice_plan=voice_assignments,
     )
     await db.insert(db.books, book.model_dump())
     logger.info(f"Book uploaded: {book.title} ({size_mb:.2f} MB, music={add_music}, vol={music_volume_db}dB)")
@@ -75,8 +94,9 @@ async def upload_book(
         add_background_music=add_music,
         export_format=ExportFormat(export_format),
         music_volume_db=music_volume_db,   # ← NEW
-        music_provider=music_provider,
+        music_type=music_provider,
         music_style=music_style,
+        character_voice_overrides=voice_assignments,
     )
 
     # Dispatch to Celery if configured, else use BackgroundTasks
@@ -97,12 +117,122 @@ async def upload_book(
     }
 
 
+@router.post("/start-with-voices", response_model=dict, status_code=202)
+async def start_with_voices(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    title: str = Form(default=""),
+    author: str = Form(default=""),
+    add_music: bool = Form(default=False),
+    export_format: str = Form(default="mp3"),
+    music_volume_db: float = Form(default=-18.0),
+    music_provider: str = Form(default="auto"),
+    music_style: str = Form(default="auto"),
+    voice_assignments_json: str = Form(default="[]"),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Explicit entrypoint for two-step UX:
+      1) parse-characters
+      2) start-with-voices
+    Uses exactly the same pipeline as /upload, but expects assignment payload.
+    """
+    # Validate requested music controls here too, so this endpoint behaves exactly
+    # like /upload for option validation and errors.
+    music_provider, music_style = _normalize_music_inputs(music_provider, music_style)
+
+    return await upload_book(
+        background_tasks=background_tasks,
+        file=file,
+        title=title,
+        author=author,
+        add_music=add_music,
+        export_format=export_format,
+        music_volume_db=music_volume_db,
+        music_type=music_provider,
+        music_style=music_style,
+        voice_assignments_json=voice_assignments_json,
+        current_user=current_user,
+    )
+
+
+@router.post("/parse-characters", response_model=dict)
+async def parse_characters(
+    file: UploadFile = File(...),
+    title: str = Form(default=""),
+    author: str = Form(default=""),
+):
+    """
+    Parse the uploaded file and return a draft character list + suggested voices.
+    This endpoint does not start synthesis; it powers a pre-processing review step.
+    """
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(415, f"Unsupported file type '{ext}'. Allowed: {ALLOWED_EXTENSIONS}")
+
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(413, f"File too large ({size_mb:.1f} MB). Max: {MAX_FILE_SIZE_MB} MB")
+
+    temp_path = settings.UPLOAD_DIR / f"preview_{uuid.uuid4().hex}{ext}"
+    temp_path.write_bytes(content)
+    try:
+        from services.text_extraction import extract_text
+        from services.nlp_processor import process_chapters
+        from services.voice_manager import assign_voices
+
+        chapters_raw, char_declarations, voice_hints = extract_text(temp_path)
+        preview_book_id = f"preview_{uuid.uuid4().hex}"
+        _, characters, _ = process_chapters(
+            chapters_raw, preview_book_id, char_declarations=char_declarations
+        )
+        suggested = assign_voices(characters, voice_hints)
+        for char in characters:
+            name = char.get("name")
+            if name and name in suggested:
+                char["voice_id"] = suggested[name]
+        characters = sorted(characters, key=lambda c: -c.get("appearance_count", 0))
+        return {
+            "success": True,
+            "characters": characters,
+            "suggestions_count": len(suggested),
+        }
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 async def _run_pipeline_bg(book_id: str, file_path: Path, options):
     try:
         from services.pipeline import run_pipeline
         await run_pipeline(book_id, file_path, options)
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)
+
+
+def _parse_voice_assignments(raw: str) -> dict[str, str]:
+    """
+    Parse JSON voice assignment payload in shape:
+      [{ "character_name": "Archer", "voice_id": "..." }, ...]
+    and return dict[str, str].
+    """
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(422, f"Invalid voice_assignments_json: {exc.msg}") from exc
+    if not isinstance(parsed, list):
+        raise HTTPException(422, "voice_assignments_json must be a JSON array")
+    result: dict[str, str] = {}
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("character_name", "")).strip()
+        voice_id = str(item.get("voice_id", "")).strip()
+        if name and voice_id:
+            result[name] = voice_id
+    return result
 
 
 # ─── WebSocket progress ────────────────────────────────────────────────────────

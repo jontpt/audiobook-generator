@@ -60,8 +60,9 @@ def process_book_task(self, book_id: str, file_path_str: str, options_dict: dict
         export_format=ExportFormat(options_dict.get("export_format", "mp3")),
         speech_rate=options_dict.get("speech_rate", 1.0),
         music_volume_db=options_dict.get("music_volume_db", -18.0),
-        music_provider=options_dict.get("music_provider", "auto"),
-        music_style=options_dict.get("music_style", "emotion_adaptive"),
+        music_type=options_dict.get("music_type", "auto"),
+        music_style=options_dict.get("music_style", "auto"),
+        character_voice_overrides=options_dict.get("character_voice_overrides", {}),
     )
     file_path = Path(file_path_str)
 
