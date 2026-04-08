@@ -12,7 +12,7 @@ import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { Character, MusicProvider, MusicStylePreset, RadioCue } from '../types';
+import type { Character, MusicProvider, MusicStylePreset, RadioCue, RadioCueLintIssue } from '../types';
 
 const ACCEPT = {
   'application/pdf': ['.pdf'],
@@ -69,6 +69,8 @@ export const UploadPage: React.FC = () => {
   const [parsingCharacters, setParsingCharacters] = useState(false);
   const [radioCues, setRadioCues] = useState<RadioCue[]>([]);
   const [radioCueCounts, setRadioCueCounts] = useState<Record<string, number>>({});
+  const [radioLintIssues, setRadioLintIssues] = useState<RadioCueLintIssue[]>([]);
+  const [radioLintCounts, setRadioLintCounts] = useState<Record<string, number>>({});
   const [parsingCues, setParsingCues] = useState(false);
 
   const navigate    = useNavigate();
@@ -82,6 +84,12 @@ export const UploadPage: React.FC = () => {
   const onDrop = useCallback((accepted: File[]) => {
     if (accepted[0]) {
       setFile(accepted[0]);
+      // Reset analysis snapshots when a new file is selected.
+      setCharacterDraft([]);
+      setRadioCues([]);
+      setRadioCueCounts({});
+      setRadioLintIssues([]);
+      setRadioLintCounts({});
       const base = accepted[0].name
         .replace(/\.[^.]+$/, '')
         .replace(/[_-]/g, ' ')
@@ -132,6 +140,8 @@ export const UploadPage: React.FC = () => {
     addMusic && `Style: ${musicStylePreset}`,
     characterDraft.length > 0 && `Voices: ${characterDraft.length}`,
     radioCues.length > 0 && `Cues: ${radioCues.length}`,
+    (radioLintCounts.error ?? 0) > 0 && `Lint errors: ${radioLintCounts.error}`,
+    (radioLintCounts.warning ?? 0) > 0 && `Lint warnings: ${radioLintCounts.warning}`,
     exportFormat === 'm4b' && 'M4B',
   ].filter(Boolean).join(' · ');
 
@@ -167,6 +177,8 @@ export const UploadPage: React.FC = () => {
       const result = await booksApi.previewRadioCues(file);
       setRadioCues(result.cues || []);
       setRadioCueCounts(result.cue_counts || {});
+      setRadioLintIssues(result.lint_issues || []);
+      setRadioLintCounts(result.lint_counts || {});
       if (!result.cues?.length) {
         toast('No radio cues found. Add SCENE/AMBIENCE/[FOLEY]/[MUSIC] tags.', { icon: 'ℹ️' });
       } else {
@@ -221,7 +233,15 @@ export const UploadPage: React.FC = () => {
                   </span>
                   <button
                     type="button"
-                    onClick={e => { e.stopPropagation(); setFile(null); }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setFile(null);
+                      setCharacterDraft([]);
+                      setRadioCues([]);
+                      setRadioCueCounts({});
+                      setRadioLintIssues([]);
+                      setRadioLintCounts({});
+                    }}
                     className="mt-3 text-xs text-dark-400 hover:text-red-400 flex items-center gap-1 transition-colors">
                     <X size={12} /> Remove file
                   </button>
@@ -568,6 +588,17 @@ AMBIENCE: rain_city_night
 [FOLEY: footsteps_fast, pan=left_to_center, dist=near]
 [MUSIC: tension_low, fade_in=1.2]`}</pre>
                   </div>
+                  <div className="text-xs text-dark-300 bg-dark-900/40 border border-dark-700 rounded-lg p-3 space-y-2">
+                    <p className="text-dark-200 font-medium">Markup helper</p>
+                    <ul className="space-y-1 list-disc list-inside text-dark-400">
+                      <li>Use <span className="font-mono">SCENE:</span> and <span className="font-mono">AMBIENCE:</span> as prefix directives at paragraph start.</li>
+                      <li>Use inline brackets for cues: <span className="font-mono">[FOLEY: ...]</span>, <span className="font-mono">[SFX: ...]</span>, <span className="font-mono">[MUSIC: ...]</span>.</li>
+                      <li>Common params: <span className="font-mono">level=-20</span>, <span className="font-mono">duration=900ms</span>, <span className="font-mono">pan=left</span>, <span className="font-mono">dist=near</span>, <span className="font-mono">fade_in=1.2s</span>.</li>
+                    </ul>
+                    <p className="text-dark-500">
+                      Run <span className="font-medium text-dark-300">Analyze Cues</span> for lint checks before processing.
+                    </p>
+                  </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs text-dark-400">
@@ -611,6 +642,40 @@ AMBIENCE: rain_city_night
                             <span className="font-mono text-brand-300">{cue.type.toUpperCase()}</span>
                             <span className="flex-1 truncate">{cue.value}</span>
                             <span className="text-dark-500">ch {cue.chapter_index + 1}, p {cue.paragraph_index + 1}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {radioLintIssues.length > 0 && (
+                    <div className="bg-dark-900/40 border border-dark-700 rounded-lg p-3 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/20">
+                          errors: {radioLintCounts.error ?? 0}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                          warnings: {radioLintCounts.warning ?? 0}
+                        </span>
+                        <span className="text-dark-500">Cue lint findings</span>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                        {radioLintIssues.map((issue, idx) => (
+                          <div
+                            key={`${issue.code}-${idx}`}
+                            className={`text-xs rounded px-2 py-1 border ${
+                              issue.severity === 'error'
+                                ? 'border-red-500/25 bg-red-500/5 text-red-300'
+                                : 'border-amber-500/25 bg-amber-500/5 text-amber-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono uppercase">{issue.code}</span>
+                              <span className="text-dark-500">
+                                ch {issue.chapter_index + 1}, p {issue.paragraph_index + 1}
+                              </span>
+                            </div>
+                            <p className="mt-1">{issue.message}</p>
+                            {issue.hint && <p className="mt-0.5 text-dark-400">Hint: {issue.hint}</p>}
                           </div>
                         ))}
                       </div>

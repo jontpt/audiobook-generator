@@ -3,7 +3,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from services.radio_markup import parse_radio_markup, summarize_radio_cues
+from services.radio_markup import (
+    parse_radio_markup,
+    summarize_radio_cues,
+    lint_radio_markup,
+    summarize_lint_issues,
+)
 
 
 def test_parse_radio_markup_extracts_and_cleans():
@@ -30,3 +35,26 @@ def test_parse_radio_markup_extracts_and_cleans():
     assert foley["label"] == "footsteps_fast"
     assert foley["params"]["pan"] == "left_to_center"
     assert foley["params"]["dist"] == "near"
+
+
+def test_lint_radio_markup_reports_structural_and_param_issues():
+    chapters = [{
+        "title": "Chapter 1",
+        "paragraphs": [
+            "[THUNDER: boom]",  # unknown inline tag
+            "[FOLEY: footsteps_fast, pan=diagonal, level=loud",  # unclosed + invalid params
+            "SCENE: Hallway [MUSIC: tension_low, fade_in=fast]",
+        ],
+    }]
+
+    _, cues = parse_radio_markup(chapters)
+    issues = lint_radio_markup(chapters, cues)
+    counts = summarize_lint_issues(issues)
+    codes = {i.get("code") for i in issues}
+
+    assert "unknown_inline_cue_tag" in codes
+    assert "unclosed_inline_cue" in codes
+    assert "invalid_pan_value" in codes
+    assert "invalid_numeric_param" in codes
+    assert counts["error"] >= 1
+    assert counts["warning"] >= 1

@@ -6,6 +6,7 @@ import type {
   MusicProvider,
   MusicStylePreset,
   RadioCue,
+  RadioCueLintIssue,
 } from '../types';
 
 export const booksApi = {
@@ -83,6 +84,8 @@ export const booksApi = {
   ): Promise<{
     cues: RadioCue[];
     cue_counts: Record<string, number>;
+    lint_issues: RadioCueLintIssue[];
+    lint_counts: Record<string, number>;
     chapter_count: number;
   }> => {
     const form = new FormData();

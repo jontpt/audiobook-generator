@@ -141,6 +141,15 @@ export interface RadioCue {
   paragraph_index: number;
 }
 
+export interface RadioCueLintIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  hint: string;
+  chapter_index: number;
+  paragraph_index: number;
+}
+
 export interface ExportStatus {
   book_id: string;
   title: string;

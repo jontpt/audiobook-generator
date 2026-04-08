@@ -224,15 +224,19 @@ async def preview_radio_cues(
     temp_path.write_bytes(content)
     try:
         from services.text_extraction import extract_text
-        from services.radio_markup import parse_radio_markup
+        from services.radio_markup import parse_radio_markup, lint_radio_markup, summarize_lint_issues
 
         chapters_raw, _, _ = extract_text(temp_path)
         _, cues = parse_radio_markup(chapters_raw)
         cue_counts = summarize_radio_cues(cues)
+        lint_issues = lint_radio_markup(chapters_raw, cues)
+        lint_counts = summarize_lint_issues(lint_issues)
         return {
             "success": True,
             "cues": cues,
             "cue_counts": cue_counts,
+            "lint_issues": lint_issues,
+            "lint_counts": lint_counts,
             "chapter_count": len(chapters_raw),
         }
     finally:
