@@ -93,6 +93,7 @@ class TextSegment(BaseModel):
     speaker: Optional[str] = None     # Character name for dialogue
     text: str
     emotion: EmotionTag = EmotionTag.NEUTRAL
+    performance: dict[str, str] = Field(default_factory=dict)
     audio_path: Optional[str] = None  # Path to generated audio file
     duration_ms: Optional[int] = None
 

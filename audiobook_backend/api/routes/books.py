@@ -13,7 +13,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks,
 from fastapi.responses import JSONResponse
 
 from config import settings
-from models.schemas import Book, ProcessingStatus, Character, Gender
+from models.schemas import Book, ProcessingStatus
 from models.database import db
 from api.routes.auth import get_current_user
 from services.radio_markup import summarize_radio_cues
@@ -150,7 +150,7 @@ async def start_with_voices(
         add_music=add_music,
         export_format=export_format,
         music_volume_db=music_volume_db,
-        music_type=music_provider,
+        music_provider=music_provider,
         music_style=music_style,
         voice_assignments_json=voice_assignments_json,
         current_user=current_user,
@@ -224,13 +224,16 @@ async def preview_radio_cues(
     temp_path.write_bytes(content)
     try:
         from services.text_extraction import extract_text
-        from services.radio_markup import parse_radio_cues
+        from services.radio_markup import parse_radio_markup
 
         chapters_raw, _, _ = extract_text(temp_path)
-        cue_preview = parse_radio_cues(chapters_raw)
+        _, cues = parse_radio_markup(chapters_raw)
+        cue_counts = summarize_radio_cues(cues)
         return {
             "success": True,
-            **cue_preview,
+            "cues": cues,
+            "cue_counts": cue_counts,
+            "chapter_count": len(chapters_raw),
         }
     finally:
         temp_path.unlink(missing_ok=True)

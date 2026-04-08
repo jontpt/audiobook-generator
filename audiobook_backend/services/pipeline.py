@@ -159,6 +159,7 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
                 book_id=book_id,
                 segment_id=seg["id"],
                 emotion=seg.get("emotion", "neutral"),
+                acting_directive=seg.get("acting_directive", "normal"),
                 elevenlabs_api_key=elevenlabs_api_key,
             )
             audio_path = await asyncio.get_event_loop().run_in_executor(
@@ -245,8 +246,9 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
                 None,
                 assemble_chapter,
                 ch_segs, ch_title, book_id, ch_idx,
-                music_p, options.music_volume_db, chapter_cues,
+                music_p, options.music_volume_db,
                 _make_progress_cb(ch_base, ch_range, book_id),  # progress callback
+                chapter_cues,
             )
             if ch_path:
                 chapter_paths.append(ch_path)
@@ -302,19 +304,6 @@ def _resolve_voice(voice_assignment: dict[str, str], speaker: str | None) -> str
         speaker,
         voice_assignment.get("narrator", settings.DEFAULT_NARRATOR_VOICE_ID)
     )
-
-
-def _group_radio_cues_by_chapter(radio_cues: list[dict]) -> dict[int, list[dict]]:
-    grouped: dict[int, list[dict]] = {}
-    for cue in radio_cues:
-        try:
-            ch_idx = int(cue.get("chapter_index", 0))
-        except Exception:
-            ch_idx = 0
-        grouped.setdefault(ch_idx, []).append(cue)
-    for ch_idx in grouped:
-        grouped[ch_idx].sort(key=lambda c: int(c.get("paragraph_index", 0)))
-    return grouped
 
 
 async def _fetch_music(

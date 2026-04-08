@@ -65,6 +65,38 @@ PRONOUN_MAP = {
     'she': Gender.FEMALE, 'her': Gender.FEMALE, 'hers': Gender.FEMALE,
 }
 
+# Optional acting directive prefix on dialogue text:
+# "(whisper, tense) Keep your voice down."
+_ACTING_DIRECTIVE_PREFIX_RE = re.compile(r"^\s*\(([^)]+)\)\s*(.+)$")
+
+
+def _extract_acting_directive(text: str) -> tuple[str | None, str]:
+    """
+    Extract an optional leading acting directive.
+    Returns (directive, cleaned_text).
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None, ""
+    m = _ACTING_DIRECTIVE_PREFIX_RE.match(raw)
+    if not m:
+        return None, raw
+    directive = m.group(1).strip()
+    cleaned = m.group(2).strip()
+    if not cleaned:
+        return None, raw
+    return directive or None, cleaned
+
+_ACTING_DIRECTIVE_RE = re.compile(
+    r'^\s*\((whisper|whispering|shout|shouting|tense|calm|angry|sad|happy|urgent)\)\s*[:,\-–—]?\s*',
+    re.IGNORECASE,
+)
+
+_DIRECTIVE_CANONICAL: dict[str, str] = {
+    "whispering": "whisper",
+    "shouting": "shout",
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Emotion keywords (rule-based fallback)
 # ─────────────────────────────────────────────────────────────────────────────

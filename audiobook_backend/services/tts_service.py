@@ -87,12 +87,43 @@ def _build_voice_settings(emotion: str) -> dict:
     return presets.get(emotion, presets["neutral"])
 
 
+def _apply_acting_directive(base: dict, directive: str | None) -> dict:
+    """
+    Adjust ElevenLabs voice settings for simple acting directives.
+    Directive examples: whisper, shout, tense, calm, excited.
+    """
+    if not directive:
+        return base
+    d = str(directive).strip().lower()
+    if not d:
+        return base
+
+    tuned = dict(base)
+    if d in ("whisper", "soft", "hushed"):
+        tuned["stability"] = min(1.0, tuned.get("stability", 0.5) + 0.15)
+        tuned["style"] = max(0.0, tuned.get("style", 0.0) - 0.20)
+    elif d in ("shout", "angry", "loud"):
+        tuned["stability"] = max(0.0, tuned.get("stability", 0.5) - 0.15)
+        tuned["style"] = min(1.0, tuned.get("style", 0.0) + 0.25)
+    elif d in ("tense", "nervous", "urgent"):
+        tuned["stability"] = max(0.0, tuned.get("stability", 0.5) - 0.08)
+        tuned["style"] = min(1.0, tuned.get("style", 0.0) + 0.15)
+    elif d in ("calm", "gentle"):
+        tuned["stability"] = min(1.0, tuned.get("stability", 0.5) + 0.10)
+        tuned["style"] = max(0.0, tuned.get("style", 0.0) - 0.10)
+    elif d in ("excited", "energetic"):
+        tuned["stability"] = max(0.0, tuned.get("stability", 0.5) - 0.10)
+        tuned["style"] = min(1.0, tuned.get("style", 0.0) + 0.20)
+    return tuned
+
+
 def synthesize_segment(
     text: str,
     voice_id: str,
     book_id: str,
     segment_id: str,
     emotion: str = "neutral",
+    acting_directive: str | None = None,
     model_id: str = None,
     elevenlabs_api_key: Optional[str] = None,
     max_retries: int = 3,
@@ -107,7 +138,14 @@ def synthesize_segment(
     active_api_key = elevenlabs_api_key or settings.ELEVENLABS_API_KEY
     key_mode = "real" if active_api_key else "mock"
 
-    cache_key = _cache_key(text, voice_id, model_id, emotion, key_mode)
+    directive_part = (acting_directive or "").strip().lower()
+    cache_key = _cache_key(
+        text,
+        voice_id,
+        f"{model_id}|act:{directive_part or 'none'}",
+        emotion,
+        key_mode,
+    )
     out_path = _cached_path(cache_key, book_id)
 
     # Return from cache if available
@@ -120,7 +158,7 @@ def synthesize_segment(
         logger.warning("No ELEVENLABS_API_KEY set — using mock TTS audio")
         return _generate_mock_audio(text, out_path)
 
-    voice_settings = _build_voice_settings(emotion)
+    voice_settings = _apply_acting_directive(_build_voice_settings(emotion), acting_directive)
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -149,7 +187,7 @@ def synthesize_segment(
 
             logger.info(
                 f"Synthesized segment {segment_id} "
-                f"({len(text)} chars, voice={voice_id}, emotion={emotion})"
+                f"({len(text)} chars, voice={voice_id}, emotion={emotion}, act={directive_part or 'none'})"
             )
             return out_path
 
