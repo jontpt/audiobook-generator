@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import json
+import math
 import re
 from pathlib import Path
 from typing import Optional
@@ -207,6 +208,64 @@ def _apply_scene_profile(narration, scene_label: str):
         return narration.overlay(wet)
     except Exception:
         return narration
+
+
+def _master_radio_mix(audio):
+    """
+    Apply a gentle mastering chain for dialogue-forward radio-play output:
+      1) Remove low-end rumble
+      2) Light bus compression for glue
+      3) Normalize peaks to leave safe headroom
+      4) Safety limiter pass when needed
+    """
+    if len(audio) <= 0:
+        return audio
+    try:
+        from pydub.effects import compress_dynamic_range
+    except Exception:
+        return audio
+
+    mastered = audio
+    try:
+        mastered = mastered.high_pass_filter(65)
+    except Exception:
+        pass
+
+    try:
+        mastered = compress_dynamic_range(
+            mastered,
+            threshold=-20.0,
+            ratio=3.0,
+            attack=8.0,
+            release=120.0,
+        )
+    except Exception:
+        pass
+
+    peak = float(getattr(mastered, "max_dBFS", float("-inf")))
+    if math.isfinite(peak):
+        gain = -1.2 - peak
+        gain = max(-10.0, min(6.0, gain))
+        mastered = mastered.apply_gain(gain)
+
+        # If transients still poke over headroom, apply a harder limiter-style squeeze.
+        peak_after = float(getattr(mastered, "max_dBFS", float("-inf")))
+        if math.isfinite(peak_after) and peak_after > -1.0:
+            try:
+                mastered = compress_dynamic_range(
+                    mastered,
+                    threshold=-3.0,
+                    ratio=12.0,
+                    attack=1.0,
+                    release=80.0,
+                )
+                peak_limited = float(getattr(mastered, "max_dBFS", float("-inf")))
+                if math.isfinite(peak_limited) and peak_limited > -1.0:
+                    mastered = mastered.apply_gain(-1.0 - peak_limited)
+            except Exception:
+                pass
+
+    return mastered
 
 
 def _generate_ambience_segment(label: str, duration_ms: int, level_db: float = -42.0):
@@ -436,6 +495,7 @@ def assemble_chapter(
                 chapter_cues=chapter_cues,
                 paragraph_offsets_ms=paragraph_offsets_ms,
             )
+        narration = _master_radio_mix(narration)
 
         # ── 3. Export chapter ───────────────────────────────────────────────
         book_dir = EXPORT_DIR / book_id
@@ -549,6 +609,7 @@ def _merge_to_mp3(
             return None
 
         combined = normalize(combined)
+        combined = _master_radio_mix(combined)
         out_path = out_dir / f"{safe_title}.mp3"
         combined.export(str(out_path), format="mp3", bitrate="128k",
                         tags={"title": safe_title})
