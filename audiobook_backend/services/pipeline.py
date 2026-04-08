@@ -209,11 +209,21 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
         loop          = asyncio.get_running_loop()
         num_chapters  = max(len(chapters), 1)
 
+        book_record_for_mix = await db.get_by_id(db.books, book_id) or {}
+        radio_cues = (
+            book_record_for_mix.get("radio_cues") or []
+            if isinstance(book_record_for_mix, dict)
+            else []
+        )
         for ch_num, ch in enumerate(chapters):
             ch_idx   = ch.get("index", 0)
             ch_title = ch.get("title", f"Chapter {ch_idx + 1}")
             ch_segs  = segs_by_chapter.get(ch_idx, [])
             music_p  = music_tracks.get(ch.get("dominant_emotion", "neutral"))
+            chapter_cues = [
+                cue for cue in radio_cues
+                if int(cue.get("chapter_index", -1)) == int(ch_idx)
+            ]
 
             # Progress window for this chapter: 0.83 → 0.93 spread across chapters
             ch_base  = 0.83 + (ch_num / num_chapters) * 0.10
@@ -235,7 +245,7 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
                 None,
                 assemble_chapter,
                 ch_segs, ch_title, book_id, ch_idx,
-                music_p, options.music_volume_db,
+                music_p, options.music_volume_db, chapter_cues,
                 _make_progress_cb(ch_base, ch_range, book_id),  # progress callback
             )
             if ch_path:
@@ -292,6 +302,19 @@ def _resolve_voice(voice_assignment: dict[str, str], speaker: str | None) -> str
         speaker,
         voice_assignment.get("narrator", settings.DEFAULT_NARRATOR_VOICE_ID)
     )
+
+
+def _group_radio_cues_by_chapter(radio_cues: list[dict]) -> dict[int, list[dict]]:
+    grouped: dict[int, list[dict]] = {}
+    for cue in radio_cues:
+        try:
+            ch_idx = int(cue.get("chapter_index", 0))
+        except Exception:
+            ch_idx = 0
+        grouped.setdefault(ch_idx, []).append(cue)
+    for ch_idx in grouped:
+        grouped[ch_idx].sort(key=lambda c: int(c.get("paragraph_index", 0)))
+    return grouped
 
 
 async def _fetch_music(
