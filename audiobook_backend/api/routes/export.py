@@ -13,6 +13,8 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/export", tags=["Export"])
+ALLOWED_MUSIC_PROVIDERS = {"auto", "mubert", "soundraw", "jamendo"}
+ALLOWED_MUSIC_STYLES = {"auto", "ambient", "cinematic", "orchestral", "piano", "electronic"}
 
 
 @router.post("/{book_id}", response_model=dict)
@@ -21,7 +23,9 @@ async def trigger_export(
     background_tasks: BackgroundTasks,
     export_format: str = "mp3",
     add_music: bool = False,
-    music_volume_db: float = -18.0,   # ← NEW: range –30 (subtle) to –6 (loud)
+    music_volume_db: float = -18.0,   # dB range configured in settings
+    music_provider: str = "auto",
+    music_style: str = "ambient",
 ):
     book = await db.get_by_id(db.books, book_id)
     if not book:
@@ -32,14 +36,25 @@ async def trigger_export(
     if not file_path_str or not Path(file_path_str).exists():
         raise HTTPException(400, "Source file no longer available. Please re-upload.")
 
-    # Clamp to safe range
-    music_volume_db = max(-40.0, min(-3.0, music_volume_db))
+    # Clamp to configured safe range so bad client values cannot break mixing.
+    music_volume_db = max(
+        settings.MUSIC_VOLUME_MIN_DB,
+        min(settings.MUSIC_VOLUME_MAX_DB, music_volume_db),
+    )
+    music_provider = (music_provider or "auto").lower()
+    music_style = (music_style or "auto").lower()
+    if music_provider not in ALLOWED_MUSIC_PROVIDERS:
+        raise HTTPException(422, f"Unsupported music_provider '{music_provider}'")
+    if music_style not in ALLOWED_MUSIC_STYLES:
+        raise HTTPException(422, f"Unsupported music_style '{music_style}'")
 
     from models.schemas import ProcessingOptions, ExportFormat
     options = ProcessingOptions(
         export_format=ExportFormat(export_format),
         add_background_music=add_music,
         music_volume_db=music_volume_db,   # ← NEW
+        music_type=music_provider,
+        music_style=music_style,
     )
     await db.update_by_id(db.books, book_id, {
         "status": "pending", "progress": 0.0,

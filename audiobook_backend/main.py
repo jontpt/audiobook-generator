@@ -144,7 +144,10 @@ async def stats():
 
 @app.exception_handler(ValueError)
 async def _val_err(request: Request, exc: ValueError):
-    return JSONResponse(422, {"success": False, "error": str(exc)})
+    return JSONResponse(
+        status_code=422,
+        content={"success": False, "error": str(exc)},
+    )
 
 @app.exception_handler(Exception)
 async def _generic(request: Request, exc: Exception):

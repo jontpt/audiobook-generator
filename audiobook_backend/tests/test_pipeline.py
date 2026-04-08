@@ -82,7 +82,7 @@ def test_text_extraction():
     tmp.write_text(SAMPLE_TEXT, encoding="utf-8")
 
     from services.text_extraction import extract_text
-    chapters = extract_text(tmp)
+    chapters, _, _ = extract_text(tmp)
 
     assert len(chapters) >= 1, "Should extract at least 1 chapter"
     assert all("title" in c and "paragraphs" in c for c in chapters)

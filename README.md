@@ -192,6 +192,7 @@ Export (MP3 / M4B)
 | **ElevenLabs** | Text-to-speech | [elevenlabs.io](https://elevenlabs.io) → Profile → API Keys |
 | **Mubert** | Background music | [mubert.com/render](https://mubert.com/render/pricing) (B2B) |
 | **Soundraw** | Background music | [soundraw.io/api_access](https://soundraw.io/api_access) |
+| **Jamendo** | Free background music API (non-commercial dev usage) | [developer.jamendo.com](https://developer.jamendo.com/) → create app (`client_id`) |
 
 API keys can be stored **per-user** in Settings → API Keys (encrypted in DB), or set globally in the `.env` file.
 

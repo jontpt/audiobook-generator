@@ -92,7 +92,7 @@ def _char_attr(char, attr: str, default=None):
     return getattr(char, attr, default)
 
 
-def assign_voices(characters) -> dict[str, str]:
+def assign_voices(characters, voice_hints: dict[str, str] | None = None) -> dict[str, str]:
     """
     Auto-assign a unique ElevenLabs voice_id to each character.
     Accepts list[Character] OR list[dict] (from process_chapters).
@@ -100,6 +100,7 @@ def assign_voices(characters) -> dict[str, str]:
     """
     assignment: dict[str, str] = {"narrator": NARRATOR_VOICE_ID}
     used_voice_ids: set[str] = {NARRATOR_VOICE_ID}
+    voice_hints = voice_hints or {}
 
     sorted_chars = sorted(characters, key=lambda c: -(_char_attr(c, "appearance_count") or 0))
 
@@ -109,6 +110,13 @@ def assign_voices(characters) -> dict[str, str]:
         age_group = _char_attr(char, "age_group", "adult")
 
         if not name or name.lower() == "narrator":
+            continue
+
+        hinted_voice_id = resolve_voice_hint(voice_hints.get(name))
+        if hinted_voice_id and hinted_voice_id not in used_voice_ids:
+            assignment[name] = hinted_voice_id
+            used_voice_ids.add(hinted_voice_id)
+            logger.debug(f"Applied voice hint for '{name}' → {hinted_voice_id}")
             continue
 
         candidates = _filter_voices(gender, age_group, used_voice_ids)
@@ -143,3 +151,24 @@ def get_voice_for_speaker(
     if not speaker:
         return voice_assignment.get("narrator", NARRATOR_VOICE_ID)
     return voice_assignment.get(speaker, voice_assignment.get("narrator", NARRATOR_VOICE_ID))
+
+
+def resolve_voice_hint(voice_hint: str | None) -> str | None:
+    """
+    Resolve a user-provided voice hint to a voice_id.
+    Accepts either:
+      - exact voice_id
+      - voice name (case-insensitive, e.g. "Rachel")
+    """
+    if not voice_hint:
+        return None
+    hint = voice_hint.strip()
+    if not hint:
+        return None
+    if hint in _VOICE_MAP:
+        return hint
+    lower = hint.lower()
+    for voice in VOICE_CATALOGUE:
+        if voice.name.lower() == lower:
+            return voice.voice_id
+    return None
