@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,7 +11,7 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { useBookProgress } from '../hooks/useBookProgress';
 import toast from 'react-hot-toast';
-import type { BookRevisionSummary } from '../types';
+import type { BookRevisionSummary, BookRevisionDiffResponse } from '../types';
 
 const MUSIC_STYLE_OPTIONS = [
   { value: 'auto', label: 'Auto', desc: 'Match chapter emotion' },
@@ -62,7 +62,11 @@ export const BookDetailPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [creatingRework, setCreatingRework] = useState(false);
+  const [comparingRevisions, setComparingRevisions] = useState(false);
   const [showReExportOptions, setShowReExportOptions] = useState(false);
+  const [selectedCompareRevisionId, setSelectedCompareRevisionId] = useState<string>('');
+  const [revisionDiff, setRevisionDiff] = useState<BookRevisionDiffResponse | null>(null);
+  const [revisionDiffError, setRevisionDiffError] = useState<string | null>(null);
   const [reExportAddMusic, setReExportAddMusic] = useState(false);
   const [reExportStyle, setReExportStyle] = useState<'auto' | 'ambient' | 'cinematic' | 'orchestral' | 'piano' | 'electronic'>('auto');
   const [reExportProvider, setReExportProvider] = useState<'auto' | 'mubert' | 'soundraw' | 'jamendo'>('auto');
@@ -138,6 +142,30 @@ export const BookDetailPage: React.FC = () => {
       toast.error(err?.response?.data?.detail ?? 'Failed to create rework version');
     } finally {
       setCreatingRework(false);
+    }
+  };
+
+  const revisions = useMemo(
+    () => (book?.revisions as BookRevisionSummary[] | undefined) ?? [],
+    [book?.revisions],
+  );
+
+  const handleCompareRevisions = async () => {
+    if (!id || !selectedCompareRevisionId) return;
+    setComparingRevisions(true);
+    setRevisionDiffError(null);
+    try {
+      const data = await booksApi.getRevisionDiff(id, selectedCompareRevisionId);
+      setRevisionDiff(data);
+      if (!data.diff.has_changes) {
+        toast('No detected differences between these revisions.', { icon: 'ℹ️' });
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail ?? 'Failed to compare revisions';
+      setRevisionDiffError(msg);
+      toast.error(msg);
+    } finally {
+      setComparingRevisions(false);
     }
   };
 
@@ -343,7 +371,7 @@ export const BookDetailPage: React.FC = () => {
         </motion.div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         {[
           { icon: <Layers   size={16} className="text-purple-400"  />, label: 'Revision', value: `v${book.revision_number ?? 1}` },
           { icon: <Layers   size={16} className="text-brand-400"   />, label: 'Chapters',   value: book.chapter_count },
@@ -391,6 +419,140 @@ export const BookDetailPage: React.FC = () => {
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-dark-700">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[260px]">
+                <label className="text-xs text-dark-400 block mb-1">Compare current revision with</label>
+                <select
+                  value={selectedCompareRevisionId}
+                  onChange={(e) => {
+                    setSelectedCompareRevisionId(e.target.value);
+                    setRevisionDiff(null);
+                    setRevisionDiffError(null);
+                  }}
+                  className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Select a revision…</option>
+                  {revisions
+                    .filter((rev) => rev.id !== book.id)
+                    .map((rev) => (
+                      <option key={rev.id} value={rev.id}>
+                        v{rev.revision_number} — {rev.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCompareRevisions}
+                loading={comparingRevisions}
+                disabled={!selectedCompareRevisionId}
+              >
+                Compare Revisions
+              </Button>
+            </div>
+
+            {revisionDiffError && (
+              <p className="text-xs text-red-400 mt-2">{revisionDiffError}</p>
+            )}
+
+            {revisionDiff && (
+              <div className="mt-4 rounded-xl border border-dark-700 bg-dark-900/30 p-4 space-y-4">
+                <div className="text-xs text-dark-400">
+                  Base: <span className="text-dark-200 font-mono">v{revisionDiff.base.revision_number}</span> ·
+                  Compare: <span className="text-dark-200 font-mono"> v{revisionDiff.compare.revision_number}</span>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-dark-400 mb-2">Metrics Delta</p>
+                  <div className="grid md:grid-cols-2 gap-2 text-xs">
+                    {Object.entries(revisionDiff.diff.metrics).map(([k, m]) => (
+                      <div key={k} className="rounded-lg border border-dark-700 bg-dark-800/40 px-3 py-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-dark-300">{k}</span>
+                          <span className={m.delta === 0 ? 'text-dark-500' : m.delta > 0 ? 'text-green-400' : 'text-amber-300'}>
+                            {m.delta > 0 ? `+${m.delta}` : m.delta}
+                          </span>
+                        </div>
+                        <p className="text-dark-500 mt-0.5">{m.base} → {m.compare}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {revisionDiff.diff.settings_changes.length > 0 && (
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-dark-400 mb-2">Settings Changes</p>
+                    <div className="space-y-1 text-xs">
+                      {revisionDiff.diff.settings_changes.map((c) => (
+                        <div key={c.field} className="rounded-lg border border-dark-700 bg-dark-800/40 px-3 py-2 text-dark-300">
+                          <span className="text-dark-100">{c.label}</span>: {c.base} → {c.compare}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-dark-400 mb-2">Voice Plan Changes</p>
+                  <div className="text-xs text-dark-300 space-y-1">
+                    <p>Assignments: {revisionDiff.diff.voice_plan.base_count} → {revisionDiff.diff.voice_plan.compare_count}</p>
+                    {revisionDiff.diff.voice_plan.added_characters.length > 0 && (
+                      <p>Added characters: {revisionDiff.diff.voice_plan.added_characters.join(', ')}</p>
+                    )}
+                    {revisionDiff.diff.voice_plan.removed_characters.length > 0 && (
+                      <p>Removed characters: {revisionDiff.diff.voice_plan.removed_characters.join(', ')}</p>
+                    )}
+                    {revisionDiff.diff.voice_plan.changed_voices.length > 0 && (
+                      <div className="space-y-1">
+                        <p>Changed voices:</p>
+                        {revisionDiff.diff.voice_plan.changed_voices.map((c) => (
+                          <p key={c.character} className="text-dark-400">
+                            {c.character}: {c.base_voice_id} → {c.compare_voice_id}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {revisionDiff.diff.voice_plan.added_characters.length === 0 &&
+                      revisionDiff.diff.voice_plan.removed_characters.length === 0 &&
+                      revisionDiff.diff.voice_plan.changed_voices.length === 0 && (
+                        <p className="text-dark-500">No voice-plan changes.</p>
+                      )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-dark-400 mb-2">Cue Count Delta</p>
+                  {Object.keys(revisionDiff.diff.cue_counts.delta).length > 0 ? (
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {Object.entries(revisionDiff.diff.cue_counts.delta).map(([k, delta]) => (
+                        <span
+                          key={k}
+                          className={`px-2 py-1 rounded border ${
+                            delta > 0
+                              ? 'border-green-500/30 bg-green-500/10 text-green-300'
+                              : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                          }`}
+                        >
+                          {k}: {delta > 0 ? `+${delta}` : delta}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-dark-500">No cue-count changes.</p>
+                  )}
+                </div>
+
+                {!revisionDiff.diff.has_changes && (
+                  <div className="text-xs rounded-lg border border-dark-700 bg-dark-800/40 px-3 py-2 text-dark-400">
+                    No detected differences for the selected comparison pair.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

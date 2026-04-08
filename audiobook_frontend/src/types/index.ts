@@ -160,6 +160,45 @@ export interface BookRevisionCreateResponse {
   ws_url: string;
 }
 
+export interface BookRevisionDiffMetric {
+  base: number;
+  compare: number;
+  delta: number;
+}
+
+export interface BookRevisionDiffResponse {
+  success: boolean;
+  root_book_id: string;
+  base: BookRevisionSummary;
+  compare: BookRevisionSummary;
+  diff: {
+    metrics: Record<string, BookRevisionDiffMetric>;
+    settings_changes: Array<{
+      field: string;
+      label: string;
+      base: string;
+      compare: string;
+    }>;
+    voice_plan: {
+      base_count: number;
+      compare_count: number;
+      added_characters: string[];
+      removed_characters: string[];
+      changed_voices: Array<{
+        character: string;
+        base_voice_id: string;
+        compare_voice_id: string;
+      }>;
+    };
+    cue_counts: {
+      base: Record<string, number>;
+      compare: Record<string, number>;
+      delta: Record<string, number>;
+    };
+    has_changes: boolean;
+  };
+}
+
 export interface RadioCue {
   type: 'scene' | 'ambience' | 'foley' | 'music';
   value: string;

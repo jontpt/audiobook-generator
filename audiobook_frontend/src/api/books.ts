@@ -9,6 +9,7 @@ import type {
   RadioCueLintIssue,
   BookRevisionSummary,
   BookRevisionCreateResponse,
+  BookRevisionDiffResponse,
 } from '../types';
 
 export const booksApi = {
@@ -162,6 +163,20 @@ export const booksApi = {
 
   createReworkVersion: async (id: string): Promise<BookRevisionCreateResponse> => {
     const res = await apiClient.post(`/books/${id}/rework`);
+    return res.data;
+  },
+
+  getRevisionDiff: async (
+    id: string,
+    compareRevisionId?: string,
+    baseRevisionId?: string,
+  ): Promise<BookRevisionDiffResponse> => {
+    const res = await apiClient.get(`/books/${id}/revisions/diff`, {
+      params: {
+        ...(compareRevisionId ? { compare_revision_id: compareRevisionId } : {}),
+        ...(baseRevisionId ? { base_revision_id: baseRevisionId } : {}),
+      },
+    });
     return res.data;
   },
 

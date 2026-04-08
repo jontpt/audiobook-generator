@@ -37,6 +37,37 @@ def _next_revision_title(title: str, revision_number: int) -> str:
     return f"{base} (Rework v{revision_number})"
 
 
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _normalize_counts(raw: dict | None) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, int] = {}
+    for k, v in raw.items():
+        key = str(k).strip().lower()
+        if not key:
+            continue
+        out[key] = _safe_int(v, 0)
+    return out
+
+
+def _normalize_voice_plan(raw: dict | None) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, str] = {}
+    for k, v in raw.items():
+        name = str(k).strip()
+        voice_id = str(v).strip()
+        if name and voice_id:
+            out[name] = voice_id
+    return out
+
+
 def _normalize_music_inputs(music_provider: str, music_style: str) -> tuple[str, str]:
     music_provider = (music_provider or "auto").lower()
     music_style = (music_style or "auto").lower()
@@ -355,6 +386,53 @@ async def list_revisions(book_id: str, current_user: dict = Depends(get_current_
     return await _get_revisions_for_root(root_id)
 
 
+@router.get("/{book_id}/revisions/diff", response_model=dict)
+async def get_revision_diff(
+    book_id: str,
+    base_revision_id: str | None = None,
+    compare_revision_id: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    anchor_book = await _get_or_404(book_id)
+    if current_user.get("id") and anchor_book.get("user_id") not in {None, current_user.get("id")}:
+        raise HTTPException(403, "Not authorized to view revisions for this book")
+
+    root_id = anchor_book.get("root_book_id") or anchor_book.get("id")
+    revisions = await _get_revisions_for_root(root_id)
+    by_id = {r.get("id"): r for r in revisions}
+
+    compare_book = by_id.get(compare_revision_id) if compare_revision_id else anchor_book
+    if not compare_book:
+        raise HTTPException(404, "Compare revision not found in this version chain")
+
+    if base_revision_id:
+        base_book = by_id.get(base_revision_id)
+        if not base_book:
+            raise HTTPException(404, "Base revision not found in this version chain")
+    else:
+        compare_rev = _safe_int(compare_book.get("revision_number"), 1)
+        previous = [
+            rev for rev in revisions
+            if _safe_int(rev.get("revision_number"), 1) < compare_rev
+        ]
+        if not previous:
+            raise HTTPException(404, "No previous revision available for comparison")
+        previous.sort(key=lambda r: _safe_int(r.get("revision_number"), 1))
+        base_book = previous[-1]
+
+    if str(base_book.get("id")) == str(compare_book.get("id")):
+        raise HTTPException(422, "Choose two different revisions for comparison")
+
+    diff = _compute_revision_diff(base_book, compare_book)
+    return {
+        "success": True,
+        "root_book_id": root_id,
+        "base": _book_brief(base_book),
+        "compare": _book_brief(compare_book),
+        "diff": diff,
+    }
+
+
 @router.post("/{book_id}/rework", response_model=dict, status_code=202)
 async def create_rework_revision(
     book_id: str,
@@ -502,6 +580,107 @@ async def _get_revisions_for_root(root_id: str) -> list[dict]:
         )
     )
     return revisions
+
+
+def _book_brief(book: dict) -> dict:
+    return {
+        "id": book.get("id"),
+        "title": book.get("title"),
+        "author": book.get("author"),
+        "status": book.get("status"),
+        "progress": book.get("progress", 0),
+        "revision_number": _safe_int(book.get("revision_number"), 1),
+        "parent_book_id": book.get("parent_book_id"),
+        "root_book_id": book.get("root_book_id") or book.get("id"),
+        "created_at": book.get("created_at"),
+        "updated_at": book.get("updated_at"),
+        "chapter_count": _safe_int(book.get("chapter_count"), 0),
+        "character_count": _safe_int(book.get("character_count"), 0),
+        "segment_count": _safe_int(book.get("segment_count"), 0),
+        "total_words": _safe_int(book.get("total_words"), 0),
+    }
+
+
+def _compute_revision_diff(base_book: dict, compare_book: dict) -> dict:
+    metric_fields = ("chapter_count", "character_count", "segment_count", "total_words")
+    metrics: dict[str, dict[str, int]] = {}
+    for field in metric_fields:
+        base_val = _safe_int(base_book.get(field), 0)
+        compare_val = _safe_int(compare_book.get(field), 0)
+        metrics[field] = {
+            "base": base_val,
+            "compare": compare_val,
+            "delta": compare_val - base_val,
+        }
+
+    settings_changes: list[dict] = []
+    settings_map = {
+        "music_provider_preference": "Music provider",
+        "music_style_preset": "Music style",
+    }
+    for field, label in settings_map.items():
+        before = str(base_book.get(field) or "auto")
+        after = str(compare_book.get(field) or "auto")
+        if before != after:
+            settings_changes.append({
+                "field": field,
+                "label": label,
+                "base": before,
+                "compare": after,
+            })
+
+    base_voices = _normalize_voice_plan(base_book.get("character_voice_plan"))
+    compare_voices = _normalize_voice_plan(compare_book.get("character_voice_plan"))
+    base_names = set(base_voices.keys())
+    compare_names = set(compare_voices.keys())
+    added_characters = sorted(compare_names - base_names)
+    removed_characters = sorted(base_names - compare_names)
+    changed_voices = sorted(
+        [
+            {
+                "character": name,
+                "base_voice_id": base_voices[name],
+                "compare_voice_id": compare_voices[name],
+            }
+            for name in (base_names & compare_names)
+            if base_voices[name] != compare_voices[name]
+        ],
+        key=lambda item: item["character"].lower(),
+    )
+
+    base_cues = _normalize_counts(base_book.get("radio_cue_counts"))
+    compare_cues = _normalize_counts(compare_book.get("radio_cue_counts"))
+    cue_delta: dict[str, int] = {}
+    for cue_type in sorted(set(base_cues.keys()) | set(compare_cues.keys())):
+        delta = compare_cues.get(cue_type, 0) - base_cues.get(cue_type, 0)
+        if delta != 0:
+            cue_delta[cue_type] = delta
+
+    return {
+        "metrics": metrics,
+        "settings_changes": settings_changes,
+        "voice_plan": {
+            "base_count": len(base_voices),
+            "compare_count": len(compare_voices),
+            "added_characters": added_characters,
+            "removed_characters": removed_characters,
+            "changed_voices": changed_voices,
+        },
+        "cue_counts": {
+            "base": base_cues,
+            "compare": compare_cues,
+            "delta": cue_delta,
+        },
+        "has_changes": bool(
+            any(m["delta"] != 0 for m in metrics.values())
+            or settings_changes
+            or added_characters
+            or removed_characters
+            or changed_voices
+            or cue_delta
+        ),
+    }
+
 
 def _sanitize(book: dict) -> dict:
     return {k: v for k, v in book.items() if k != "file_path"}
