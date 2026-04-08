@@ -42,7 +42,8 @@ def test_lint_radio_markup_reports_structural_and_param_issues():
         "title": "Chapter 1",
         "paragraphs": [
             "[THUNDER: boom]",  # unknown inline tag
-            "[FOLEY: footsteps_fast, pan=diagonal, level=loud",  # unclosed + invalid params
+            "[FOLEY: footsteps_fast, pan=diagonal, level=loud]",  # invalid params
+            "[FOLEY: footsteps_fast, pan=left_to_center",  # unclosed cue
             "SCENE: Hallway [MUSIC: tension_low, fade_in=fast]",
         ],
     }]
