@@ -67,7 +67,8 @@ PRONOUN_MAP = {
 
 # Optional acting directive prefix on dialogue text:
 # "(whisper, tense) Keep your voice down."
-_ACTING_DIRECTIVE_PREFIX_RE = re.compile(r"^\s*\(([^)]+)\)\s*(.+)$")
+# "[shout] Run!"
+_ACTING_DIRECTIVE_PREFIX_RE = re.compile(r"^\s*[\(\[]([^\)\]]+)[\)\]]\s*(.+)$")
 
 
 def _extract_acting_directive(text: str) -> tuple[str | None, str]:
