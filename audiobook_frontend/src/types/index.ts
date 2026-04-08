@@ -28,6 +28,30 @@ export interface ApiKey {
   created_at: string;
 }
 
+export interface SfxLibraryInventory {
+  success: boolean;
+  root: string;
+  total_files: number;
+  categories: Record<string, { count: number; files: string[] }>;
+}
+
+export interface SfxLibraryUploadResult {
+  success: boolean;
+  message: string;
+  import_report: {
+    imported_count: number;
+    imported_by_category: Record<string, number>;
+    skipped_non_audio: number;
+    skipped_too_large: number;
+    skipped_bad_entries: number;
+  };
+  inventory: {
+    root: string;
+    total_files: number;
+    categories: Record<string, { count: number; files: string[] }>;
+  };
+}
+
 export interface VoiceInfo {
   voice_id: string;
   name: string;

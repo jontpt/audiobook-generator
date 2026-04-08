@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   Key, Plus, Trash2, CheckCircle2, XCircle, Eye, EyeOff, 
-  User, Lock, Shield, Zap, RefreshCw, 
+  User, Lock, Shield, Zap, RefreshCw, Upload, FolderOpen, Music2, Waves, Clapperboard,
 } from 'lucide-react';
 import { settingsApi } from '../api/settings';
 import { authApi } from '../api/auth';
@@ -24,11 +24,13 @@ const SERVICE_META: Record<string, { name: string; icon: string; color: string; 
 export const SettingsPage: React.FC = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const sfxFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── API Keys state ──────────────────────────────────────────────────────
   const [addKeyModal, setAddKeyModal] = useState(false);
   const [newKey, setNewKey]           = useState({ service: 'elevenlabs', label: '', key: '' });
   const [showKey, setShowKey]         = useState(false);
+  const [sfxZipFile, setSfxZipFile]   = useState<File | null>(null);
 
   // ── Password change state ────────────────────────────────────────────────
   const [pwdForm, setPwdForm]     = useState({ current: '', next: '', confirm: '' });
@@ -38,6 +40,11 @@ export const SettingsPage: React.FC = () => {
   const { data: apiKeys = [], isLoading: keysLoading } = useQuery({
     queryKey: ['api-keys'],
     queryFn: settingsApi.getApiKeys,
+  });
+
+  const { data: sfxInventory, isLoading: sfxLoading } = useQuery({
+    queryKey: ['sfx-library'],
+    queryFn: settingsApi.getSfxLibraryInventory,
   });
 
   const addKeyMutation = useMutation({
@@ -65,6 +72,25 @@ export const SettingsPage: React.FC = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] });
       toast.success(data.valid ? 'Key is valid ✓' : 'Key is invalid ✗');
+    },
+  });
+
+  const uploadSfxMutation = useMutation({
+    mutationFn: () => {
+      if (!sfxZipFile) {
+        throw new Error('Choose a ZIP file first');
+      }
+      return settingsApi.uploadSfxLibrary(sfxZipFile);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sfx-library'] });
+      setSfxZipFile(null);
+      if (sfxFileInputRef.current) sfxFileInputRef.current.value = '';
+      const report = data.import_report;
+      toast.success(`Imported ${report.imported_count} audio asset(s)`);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail ?? err?.message ?? 'Failed to upload SFX library');
     },
   });
 
@@ -194,6 +220,110 @@ export const SettingsPage: React.FC = () => {
             </AnimatePresence>
           </div>
         )}
+      </section>
+
+      {/* ── Radio-play SFX Library ────────────────────────────────────────── */}
+      <section className="bg-dark-800/60 border border-dark-700 rounded-2xl p-6 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <FolderOpen size={18} className="text-brand-400" /> Radio-play SFX Library
+            </h2>
+            <p className="text-sm text-dark-400 mt-1">
+              Upload a ZIP pack with ambience/foley/music clips for deterministic cue playback.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw size={14} />}
+            onClick={() => queryClient.invalidateQueries({ queryKey: ['sfx-library'] })}
+            loading={sfxLoading}
+          >
+            Refresh
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-dark-700 bg-dark-900/40 p-3">
+            <p className="text-xs uppercase tracking-wide text-dark-400">Ambience</p>
+            <p className="mt-1 text-xl font-semibold text-white flex items-center gap-2">
+              <Waves size={16} className="text-accent-blue" />
+              {sfxInventory?.categories?.ambience?.count ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-dark-700 bg-dark-900/40 p-3">
+            <p className="text-xs uppercase tracking-wide text-dark-400">Foley</p>
+            <p className="mt-1 text-xl font-semibold text-white flex items-center gap-2">
+              <Clapperboard size={16} className="text-accent-amber" />
+              {sfxInventory?.categories?.foley?.count ?? 0}
+            </p>
+          </div>
+          <div className="rounded-xl border border-dark-700 bg-dark-900/40 p-3">
+            <p className="text-xs uppercase tracking-wide text-dark-400">Music</p>
+            <p className="mt-1 text-xl font-semibold text-white flex items-center gap-2">
+              <Music2 size={16} className="text-accent-teal" />
+              {sfxInventory?.categories?.music?.count ?? 0}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-dark-700 bg-dark-900/40 p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              ref={sfxFileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              onChange={(e) => setSfxZipFile(e.target.files?.[0] ?? null)}
+              className="block w-full max-w-md text-sm text-dark-300 file:mr-4 file:rounded-lg file:border-0 file:bg-dark-700 file:px-3 file:py-2 file:text-dark-100 hover:file:bg-dark-600"
+            />
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Upload size={14} />}
+              disabled={!sfxZipFile}
+              loading={uploadSfxMutation.isPending}
+              onClick={() => uploadSfxMutation.mutate()}
+            >
+              Import ZIP
+            </Button>
+          </div>
+          <p className="text-xs text-dark-500">
+            Expected structure supports folders like <span className="font-mono">ambience/</span>, <span className="font-mono">foley/</span>, <span className="font-mono">music/</span>.
+            Supported audio: wav, mp3, ogg, flac, m4a.
+          </p>
+          {uploadSfxMutation.data && (
+            <div className="text-xs rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-green-300 space-y-1">
+              <p>Imported: {uploadSfxMutation.data.import_report.imported_count}</p>
+              <p>
+                Skipped (non-audio / too-large / invalid):{' '}
+                {uploadSfxMutation.data.import_report.skipped_non_audio} /{' '}
+                {uploadSfxMutation.data.import_report.skipped_too_large} /{' '}
+                {uploadSfxMutation.data.import_report.skipped_bad_entries}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          {(['ambience', 'foley', 'music'] as const).map((category) => {
+            const files = sfxInventory?.categories?.[category]?.files ?? [];
+            return (
+              <div key={category} className="rounded-xl border border-dark-700 bg-dark-900/30 p-3">
+                <p className="text-dark-300 capitalize font-medium mb-2">{category} sample files</p>
+                {files.length === 0 ? (
+                  <p className="text-dark-500">No files yet.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {files.map((f) => (
+                      <li key={f} className="text-dark-400 truncate">{f}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* ── Security ──────────────────────────────────────────────────────── */}
