@@ -154,6 +154,7 @@ export interface BookRevisionCreateResponse {
   message: string;
   book_id: string;
   root_book_id: string;
+  source_revision_id?: string | null;
   parent_book_id?: string | null;
   revision_number: number;
   title: string;

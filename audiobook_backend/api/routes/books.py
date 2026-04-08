@@ -68,6 +68,22 @@ def _normalize_voice_plan(raw: dict | None) -> dict[str, str]:
     return out
 
 
+def _resolve_rework_source_revision(
+    anchor_book: dict,
+    revisions: list[dict],
+    source_revision_id: str | None,
+) -> dict:
+    if not source_revision_id:
+        return anchor_book
+    by_id = {str(r.get("id")): r for r in revisions}
+    requested = by_id.get(str(source_revision_id))
+    if not requested:
+        raise HTTPException(404, "Selected source revision was not found in this chain")
+    if str(requested.get("id")) == str(anchor_book.get("id")):
+        raise HTTPException(422, "Selected source revision must be different from current revision")
+    return requested
+
+
 def _normalize_music_inputs(music_provider: str, music_style: str) -> tuple[str, str]:
     music_provider = (music_provider or "auto").lower()
     music_style = (music_style or "auto").lower()
@@ -437,20 +453,23 @@ async def get_revision_diff(
 async def create_rework_revision(
     book_id: str,
     background_tasks: BackgroundTasks,
+    source_revision_id: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
-    source_book = await _get_or_404(book_id)
-    owner_id = source_book.get("user_id")
+    anchor_book = await _get_or_404(book_id)
+    owner_id = anchor_book.get("user_id")
     current_user_id = current_user.get("id")
     if owner_id and owner_id != current_user_id:
         raise HTTPException(403, "Not authorized to create rework version for this book")
+
+    root_id = anchor_book.get("root_book_id") or anchor_book.get("id")
+    revisions = await _get_revisions_for_root(root_id)
+    source_book = _resolve_rework_source_revision(anchor_book, revisions, source_revision_id)
 
     source_file = source_book.get("file_path")
     if not source_file or not Path(source_file).exists():
         raise HTTPException(409, "Source file is not available for rework")
 
-    root_id = source_book.get("root_book_id") or source_book.get("id")
-    revisions = await _get_revisions_for_root(root_id)
     max_revision = max((int(r.get("revision_number", 1) or 1) for r in revisions), default=1)
     new_revision_number = max_revision + 1
 
@@ -508,6 +527,7 @@ async def create_rework_revision(
         "message": "Rework version created and processing started.",
         "book_id": rework_book_id,
         "root_book_id": root_id,
+        "source_revision_id": source_book.get("id"),
         "parent_book_id": source_book.get("id"),
         "revision_number": new_revision_number,
         "title": cloned_book.title,

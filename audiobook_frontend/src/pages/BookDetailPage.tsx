@@ -62,8 +62,10 @@ export const BookDetailPage: React.FC = () => {
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
   const [creatingRework, setCreatingRework] = useState(false);
+  const [creatingSelectedRework, setCreatingSelectedRework] = useState(false);
   const [comparingRevisions, setComparingRevisions] = useState(false);
   const [showReExportOptions, setShowReExportOptions] = useState(false);
+  const [selectedReworkSourceRevisionId, setSelectedReworkSourceRevisionId] = useState<string>('');
   const [selectedCompareRevisionId, setSelectedCompareRevisionId] = useState<string>('');
   const [revisionDiff, setRevisionDiff] = useState<BookRevisionDiffResponse | null>(null);
   const [revisionDiffError, setRevisionDiffError] = useState<string | null>(null);
@@ -142,6 +144,29 @@ export const BookDetailPage: React.FC = () => {
       toast.error(err?.response?.data?.detail ?? 'Failed to create rework version');
     } finally {
       setCreatingRework(false);
+    }
+  };
+
+  const handleCreateReworkFromSelectedRevision = async () => {
+    if (!id || !selectedReworkSourceRevisionId) return;
+    setCreatingSelectedRework(true);
+    try {
+      const result = await booksApi.createReworkFromRevision(id, selectedReworkSourceRevisionId);
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['book', id] });
+      const sourceRev =
+        revisions.find((r) => r.id === result.source_revision_id)?.revision_number ??
+        revisions.find((r) => r.id === selectedReworkSourceRevisionId)?.revision_number;
+      toast.success(
+        sourceRev
+          ? `Created ${result.title} from v${sourceRev}`
+          : `Created ${result.title}`,
+      );
+      navigate(`/books/${result.book_id}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to create rework from selected revision');
+    } finally {
+      setCreatingSelectedRework(false);
     }
   };
 
@@ -421,7 +446,36 @@ export const BookDetailPage: React.FC = () => {
             })}
           </div>
 
-          <div className="mt-4 pt-4 border-t border-dark-700">
+          <div className="mt-4 pt-4 border-t border-dark-700 space-y-4">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[260px]">
+                <label className="text-xs text-dark-400 block mb-1">Create rework from revision</label>
+                <select
+                  value={selectedReworkSourceRevisionId}
+                  onChange={(e) => setSelectedReworkSourceRevisionId(e.target.value)}
+                  className="w-full bg-dark-900 border border-dark-700 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="">Select source revision…</option>
+                  {revisions
+                    .filter((rev) => rev.id !== book.id)
+                    .map((rev) => (
+                      <option key={rev.id} value={rev.id}>
+                        v{rev.revision_number} — {rev.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCreateReworkFromSelectedRevision}
+                loading={creatingSelectedRework}
+                disabled={!selectedReworkSourceRevisionId}
+              >
+                Create Rework From Selected
+              </Button>
+            </div>
+
             <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-[260px]">
                 <label className="text-xs text-dark-400 block mb-1">Compare current revision with</label>

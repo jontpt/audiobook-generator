@@ -166,6 +166,16 @@ export const booksApi = {
     return res.data;
   },
 
+  createReworkFromRevision: async (
+    id: string,
+    sourceRevisionId: string,
+  ): Promise<BookRevisionCreateResponse> => {
+    const res = await apiClient.post(`/books/${id}/rework`, null, {
+      params: { source_revision_id: sourceRevisionId },
+    });
+    return res.data;
+  },
+
   getRevisionDiff: async (
     id: string,
     compareRevisionId?: string,
