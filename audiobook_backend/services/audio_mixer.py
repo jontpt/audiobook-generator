@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 EXPORT_DIR = settings.EXPORT_DIR
 AUDIO_DIR  = settings.AUDIO_DIR
+RADIO_CUE_ASSETS_DIR = settings.RADIO_CUE_ASSETS_DIR
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,9 +97,125 @@ def _apply_spatial_params(audio, params: dict[str, str]):
     return audio
 
 
+def _safe_slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", (value or "").lower()).strip("_")
+
+
+def _scene_profile(scene_label: str) -> dict[str, float]:
+    """
+    Map scene labels to a lightweight acoustic profile.
+    Values are intentionally subtle to preserve intelligibility.
+    """
+    text = (scene_label or "").lower()
+    profile = {
+        "hp_hz": 120,
+        "lp_hz": 6000,
+        "wet_db": -18.0,
+        "echo_delay_ms": 95,
+        "echo_decay_db": -17.0,
+    }
+    if any(k in text for k in ("hall", "cathedral", "tunnel", "cavern")):
+        profile.update({"hp_hz": 100, "lp_hz": 5400, "wet_db": -14.0, "echo_delay_ms": 120, "echo_decay_db": -14.0})
+    elif any(k in text for k in ("outdoor", "forest", "street", "station", "city")):
+        profile.update({"hp_hz": 150, "lp_hz": 7200, "wet_db": -24.0, "echo_delay_ms": 70, "echo_decay_db": -24.0})
+    elif any(k in text for k in ("room", "office", "bedroom", "kitchen", "indoor")):
+        profile.update({"hp_hz": 130, "lp_hz": 6200, "wet_db": -20.0, "echo_delay_ms": 85, "echo_decay_db": -20.0})
+    return profile
+
+
+def _find_asset_candidates(kind: str, label: str) -> list[Path]:
+    """
+    Deterministic asset lookup for phase-2 cue mapping.
+    Search order:
+      1) exact slug filename
+      2) tokenized keyword filename
+    """
+    root = RADIO_CUE_ASSETS_DIR / kind
+    if not root.exists():
+        return []
+
+    exts = ("*.mp3", "*.wav", "*.ogg", "*.flac", "*.m4a")
+    candidates: list[Path] = []
+
+    slug = _safe_slug(label)
+    if slug:
+        for ext in exts:
+            candidates.extend(sorted(root.glob(f"{slug}{ext[1:]}")))
+            candidates.extend(sorted(root.glob(f"{slug}_*{ext[1:]}")))
+
+    if not candidates:
+        tokens = [t for t in re.split(r"[^a-z0-9]+", (label or "").lower()) if t]
+        for token in tokens:
+            if len(token) < 3:
+                continue
+            for ext in exts:
+                candidates.extend(sorted(root.glob(f"*{token}*{ext[1:]}")))
+
+    # stable deterministic order
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for p in candidates:
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(p)
+    return unique
+
+
+def _load_cue_asset(kind: str, label: str):
+    """Return an AudioSegment from local asset library, or None."""
+    try:
+        from pydub import AudioSegment
+        candidates = _find_asset_candidates(kind, label)
+        if not candidates:
+            return None
+        return AudioSegment.from_file(str(candidates[0]))
+    except Exception:
+        return None
+
+
+def _tile_audio_to_duration(audio, duration_ms: int):
+    from pydub import AudioSegment
+    if duration_ms <= 0:
+        return AudioSegment.silent(duration=0)
+    if len(audio) <= 0:
+        return AudioSegment.silent(duration=duration_ms)
+    bed = audio
+    while len(bed) < duration_ms:
+        bed += audio
+    return bed[:duration_ms]
+
+
+def _apply_scene_profile(narration, scene_label: str):
+    """
+    Apply subtle scene acoustics to narration.
+    Uses a low-level delayed wet layer for simple room feel.
+    """
+    profile = _scene_profile(scene_label)
+    wet = narration
+    try:
+        wet = wet.high_pass_filter(int(profile["hp_hz"]))
+        wet = wet.low_pass_filter(int(profile["lp_hz"]))
+        wet = wet + float(profile["wet_db"])
+        # Simple echo by delayed overlay
+        delay = int(profile["echo_delay_ms"])
+        if delay > 0:
+            from pydub import AudioSegment
+            delayed = AudioSegment.silent(duration=delay) + (wet + float(profile["echo_decay_db"]))
+            wet = wet.overlay(delayed)
+        return narration.overlay(wet)
+    except Exception:
+        return narration
+
+
 def _generate_ambience_segment(label: str, duration_ms: int, level_db: float = -42.0):
     from pydub import AudioSegment
     from pydub.generators import Sine, WhiteNoise
+
+    asset = _load_cue_asset("ambience", label)
+    if asset is not None:
+        return (_tile_audio_to_duration(asset, duration_ms) + level_db).fade_in(300).fade_out(500)
 
     text = (label or "").lower()
     bed = WhiteNoise().to_audio_segment(duration=max(250, duration_ms))
@@ -127,6 +244,11 @@ def _generate_foley_effect(label: str, params: dict[str, str]):
     duration_ms = _parse_time_ms(params.get("duration"), 900)
     level_db = _parse_db(params.get("level"), -20.0)
 
+    asset = _load_cue_asset("foley", label)
+    if asset is not None:
+        effect = _tile_audio_to_duration(asset, duration_ms)
+        return _apply_spatial_params(effect + level_db, params)
+
     if "foot" in text:
         step = (Sine(95).to_audio_segment(duration=90) - 8).fade_in(5).fade_out(50)
         silence = AudioSegment.silent(duration=90)
@@ -152,6 +274,14 @@ def _generate_music_sting(label: str, params: dict[str, str]):
     text = (label or "").lower()
     duration_ms = _parse_time_ms(params.get("duration"), 1800)
     level_db = _parse_db(params.get("level"), -24.0)
+
+    asset = _load_cue_asset("music", label)
+    if asset is not None:
+        sting = _tile_audio_to_duration(asset, duration_ms)
+        fade_in_ms = _parse_time_ms(params.get("fade_in"), 250)
+        fade_out_ms = _parse_time_ms(params.get("fade_out"), 500)
+        sting = (sting + level_db).fade_in(fade_in_ms).fade_out(min(fade_out_ms, max(120, duration_ms // 2)))
+        return _apply_spatial_params(sting, params)
 
     if any(k in text for k in ("tension", "dark", "suspense")):
         notes = [146, 174, 220]  # D minor-ish
@@ -191,6 +321,12 @@ def _apply_radio_cues(
         cue for cue in chapter_cues
         if str(cue.get("type", "")).lower() in ("scene", "ambience")
     ]
+    # Scene profile influences narrator reverb/EQ.
+    scene_cues = [cue for cue in ambience_cues if str(cue.get("type", "")).lower() == "scene"]
+    if scene_cues:
+        last_scene = str(scene_cues[-1].get("label") or scene_cues[-1].get("value") or "").strip()
+        if last_scene:
+            narration = _apply_scene_profile(narration, last_scene)
     if ambience_cues:
         ambience_events: list[tuple[int, str, dict[str, str]]] = []
         for cue in ambience_cues:

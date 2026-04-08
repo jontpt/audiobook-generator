@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     MUSIC_VOLUME_MAX_DB: float = -6.0
     SPEECH_PAUSE_MS:  int   = 350
     CHAPTER_PAUSE_MS: int   = 2000
+    RADIO_CUE_ASSETS_DIR: Path = BASE_DIR / "storage" / "radio_cue_assets"
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY:                  str = "changeme-in-production-use-long-random-string"
@@ -72,5 +73,5 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Ensure storage directories exist
-for _d in (settings.UPLOAD_DIR, settings.AUDIO_DIR, settings.EXPORT_DIR):
+for _d in (settings.UPLOAD_DIR, settings.AUDIO_DIR, settings.EXPORT_DIR, settings.RADIO_CUE_ASSETS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
