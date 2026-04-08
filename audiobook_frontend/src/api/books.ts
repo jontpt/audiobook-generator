@@ -7,6 +7,8 @@ import type {
   MusicStylePreset,
   RadioCue,
   RadioCueLintIssue,
+  BookRevisionSummary,
+  BookRevisionCreateResponse,
 } from '../types';
 
 export const booksApi = {
@@ -150,6 +152,16 @@ export const booksApi = {
 
   getExportStatus: async (id: string) => {
     const res = await apiClient.get(`/export/${id}/status`);
+    return res.data;
+  },
+
+  getRevisions: async (id: string): Promise<BookRevisionSummary[]> => {
+    const res = await apiClient.get(`/books/${id}/revisions`);
+    return res.data;
+  },
+
+  createReworkVersion: async (id: string): Promise<BookRevisionCreateResponse> => {
+    const res = await apiClient.post(`/books/${id}/rework`);
     return res.data;
   },
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -11,6 +11,7 @@ import { Badge } from '../components/UI/Badge';
 import { Button } from '../components/UI/Button';
 import { useBookProgress } from '../hooks/useBookProgress';
 import toast from 'react-hot-toast';
+import type { BookRevisionSummary } from '../types';
 
 const MUSIC_STYLE_OPTIONS = [
   { value: 'auto', label: 'Auto', desc: 'Match chapter emotion' },
@@ -57,8 +58,10 @@ const isTerminal = (s?: string) => !!s && (TERMINAL as readonly string[]).includ
 
 export const BookDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [exporting, setExporting] = useState(false);
+  const [creatingRework, setCreatingRework] = useState(false);
   const [showReExportOptions, setShowReExportOptions] = useState(false);
   const [reExportAddMusic, setReExportAddMusic] = useState(false);
   const [reExportStyle, setReExportStyle] = useState<'auto' | 'ambient' | 'cinematic' | 'orchestral' | 'piano' | 'electronic'>('auto');
@@ -122,6 +125,22 @@ export const BookDetailPage: React.FC = () => {
     finally { setExporting(false); }
   };
 
+  const handleCreateRework = async () => {
+    if (!id) return;
+    setCreatingRework(true);
+    try {
+      const result = await booksApi.createReworkVersion(id);
+      queryClient.invalidateQueries({ queryKey: ['books'] });
+      queryClient.invalidateQueries({ queryKey: ['book', id] });
+      toast.success(`Created ${result.title}`);
+      navigate(`/books/${result.book_id}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Failed to create rework version');
+    } finally {
+      setCreatingRework(false);
+    }
+  };
+
   if (isLoading) return (
     <div className="flex items-center justify-center py-24">
       <div className="w-8 h-8 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
@@ -168,6 +187,15 @@ export const BookDetailPage: React.FC = () => {
           <Badge type="status" value={status} />
           {status === 'completed' && (
             <>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<Layers size={14} />}
+                onClick={handleCreateRework}
+                loading={creatingRework}
+              >
+                Create Rework Version
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -317,6 +345,7 @@ export const BookDetailPage: React.FC = () => {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
+          { icon: <Layers   size={16} className="text-purple-400"  />, label: 'Revision', value: `v${book.revision_number ?? 1}` },
           { icon: <Layers   size={16} className="text-brand-400"   />, label: 'Chapters',   value: book.chapter_count },
           { icon: <Users    size={16} className="text-accent-teal" />, label: 'Characters', value: book.character_count },
           { icon: <FileText size={16} className="text-accent-amber"/>, label: 'Segments',   value: book.segment_count },
@@ -328,6 +357,43 @@ export const BookDetailPage: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {book.revisions && book.revisions.length > 1 && (
+        <div className="bg-dark-800/40 border border-dark-700 rounded-2xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-white flex items-center gap-2">
+              <Layers size={16} className="text-brand-400" /> Revision Timeline
+            </h3>
+            <span className="text-xs text-dark-400">
+              Root: {book.root_book_id?.slice(0, 8) ?? book.id.slice(0, 8)}
+            </span>
+          </div>
+          <div className="space-y-2">
+            {(book.revisions as BookRevisionSummary[]).map((rev) => {
+              const isCurrent = rev.id === book.id;
+              return (
+                <button
+                  key={rev.id}
+                  type="button"
+                  onClick={() => navigate(`/books/${rev.id}`)}
+                  className={`w-full flex items-center gap-3 py-2.5 px-3 rounded-xl border text-left transition-colors ${
+                    isCurrent
+                      ? 'border-brand-500/40 bg-brand-500/10'
+                      : 'border-dark-700 bg-dark-900/40 hover:bg-dark-900/60'
+                  }`}
+                >
+                  <span className="text-xs font-mono text-dark-500 w-10">v{rev.revision_number}</span>
+                  <span className="flex-1 text-sm text-white truncate">{rev.title}</span>
+                  <Badge type="status" value={rev.status} />
+                  <span className="text-xs text-dark-500">
+                    {new Date(rev.created_at).toLocaleDateString()}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {book.characters && book.characters.length > 0 && (
         <div className="bg-dark-800/40 border border-dark-700 rounded-2xl p-5 mb-6">

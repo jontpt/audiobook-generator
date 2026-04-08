@@ -126,10 +126,38 @@ export interface Book {
   segment_count: number;
   total_words: number;
   export_path?: string;
+  parent_book_id?: string | null;
+  root_book_id?: string | null;
+  revision_number?: number;
   created_at: string;
   updated_at: string;
   characters?: Character[];
   chapters?: Chapter[];
+  revisions?: BookRevisionSummary[];
+}
+
+export interface BookRevisionSummary {
+  id: string;
+  title: string;
+  author: string;
+  status: ProcessingStatus;
+  progress: number;
+  revision_number: number;
+  parent_book_id?: string | null;
+  root_book_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookRevisionCreateResponse {
+  success: boolean;
+  message: string;
+  book_id: string;
+  root_book_id: string;
+  parent_book_id?: string | null;
+  revision_number: number;
+  title: string;
+  ws_url: string;
 }
 
 export interface RadioCue {

@@ -27,6 +27,16 @@ ALLOWED_MUSIC_PROVIDERS = {"auto", "mubert", "soundraw", "jamendo"}
 ALLOWED_MUSIC_STYLES = {"auto", "ambient", "cinematic", "orchestral", "electronic", "piano"}
 
 
+def _slugify_filename_part(value: str) -> str:
+    cleaned = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in (value or "").strip())
+    return cleaned[:120] or "source"
+
+
+def _next_revision_title(title: str, revision_number: int) -> str:
+    base = (title or "Untitled Book").strip()
+    return f"{base} (Rework v{revision_number})"
+
+
 def _normalize_music_inputs(music_provider: str, music_style: str) -> tuple[str, str]:
     music_provider = (music_provider or "auto").lower()
     music_style = (music_style or "auto").lower()
@@ -326,10 +336,104 @@ async def get_book(book_id: str):
     book = await _get_or_404(book_id)
     characters = await db.search(db.characters, "book_id", book_id)
     chapters   = await db.search(db.chapters,   "book_id", book_id)
+    root_id = book.get("root_book_id") or book.get("id")
+    revisions = await _get_revisions_for_root(root_id)
     return {
         **_sanitize(book),
         "characters": characters,
         "chapters":   sorted(chapters, key=lambda c: c.get("index", 0)),
+        "revisions": revisions,
+    }
+
+
+@router.get("/{book_id}/revisions", response_model=list)
+async def list_revisions(book_id: str, current_user: dict = Depends(get_current_user)):
+    book = await _get_or_404(book_id)
+    if current_user.get("id") and book.get("user_id") not in {None, current_user.get("id")}:
+        raise HTTPException(403, "Not authorized to view revisions for this book")
+    root_id = book.get("root_book_id") or book.get("id")
+    return await _get_revisions_for_root(root_id)
+
+
+@router.post("/{book_id}/rework", response_model=dict, status_code=202)
+async def create_rework_revision(
+    book_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user),
+):
+    source_book = await _get_or_404(book_id)
+    owner_id = source_book.get("user_id")
+    current_user_id = current_user.get("id")
+    if owner_id and owner_id != current_user_id:
+        raise HTTPException(403, "Not authorized to create rework version for this book")
+
+    source_file = source_book.get("file_path")
+    if not source_file or not Path(source_file).exists():
+        raise HTTPException(409, "Source file is not available for rework")
+
+    root_id = source_book.get("root_book_id") or source_book.get("id")
+    revisions = await _get_revisions_for_root(root_id)
+    max_revision = max((int(r.get("revision_number", 1) or 1) for r in revisions), default=1)
+    new_revision_number = max_revision + 1
+
+    source_ext = Path(source_file).suffix.lower()
+    if source_ext and source_ext not in ALLOWED_EXTENSIONS:
+        source_ext = f".{(source_book.get('file_type') or 'txt').strip('.')}"
+    if not source_ext:
+        source_ext = ".txt"
+
+    rework_book_id = str(uuid.uuid4())
+    source_stem = _slugify_filename_part(Path(source_file).stem)
+    cloned_upload = settings.UPLOAD_DIR / f"{rework_book_id}_{source_stem}{source_ext}"
+    cloned_upload.write_bytes(Path(source_file).read_bytes())
+
+    music_provider = (source_book.get("music_provider_preference") or "auto").lower()
+    music_style = (source_book.get("music_style_preset") or "auto").lower()
+    music_provider, music_style = _normalize_music_inputs(music_provider, music_style)
+
+    cloned_book = Book(
+        id=rework_book_id,
+        user_id=owner_id or current_user_id,
+        title=_next_revision_title(source_book.get("title") or "Untitled Book", new_revision_number),
+        author=source_book.get("author") or "Unknown",
+        file_path=str(cloned_upload),
+        file_type=(source_book.get("file_type") or source_ext.lstrip(".") or "txt"),
+        status=ProcessingStatus.PENDING,
+        progress=0.0,
+        music_provider_preference=music_provider,
+        music_style_preset=music_style,
+        character_voice_plan=(source_book.get("character_voice_plan") or {}),
+        parent_book_id=source_book.get("id"),
+        root_book_id=root_id,
+        revision_number=new_revision_number,
+    )
+    await db.insert(db.books, cloned_book.model_dump())
+
+    from models.schemas import ProcessingOptions, ExportFormat
+    options = ProcessingOptions(
+        add_background_music=False,
+        export_format=ExportFormat.MP3,
+        music_volume_db=float(source_book.get("music_volume_db", -18.0) or -18.0),
+        music_type=music_provider,
+        music_style=music_style,
+        character_voice_overrides=(source_book.get("character_voice_plan") or {}),
+    )
+
+    if settings.USE_CELERY:
+        from celery_app import process_book_task
+        process_book_task.delay(rework_book_id, str(cloned_upload), options.model_dump())
+    else:
+        background_tasks.add_task(_run_pipeline_bg, rework_book_id, cloned_upload, options)
+
+    return {
+        "success": True,
+        "message": "Rework version created and processing started.",
+        "book_id": rework_book_id,
+        "root_book_id": root_id,
+        "parent_book_id": source_book.get("id"),
+        "revision_number": new_revision_number,
+        "title": cloned_book.title,
+        "ws_url": f"/api/v1/books/{rework_book_id}/ws",
     }
 
 
@@ -382,6 +486,22 @@ async def _get_or_404(book_id: str) -> dict:
     if not book:
         raise HTTPException(404, f"Book '{book_id}' not found")
     return book
+
+
+async def _get_revisions_for_root(root_id: str) -> list[dict]:
+    all_books = await db.get_all(db.books)
+    revisions = [
+        _sanitize(b)
+        for b in all_books
+        if (b.get("root_book_id") or b.get("id")) == root_id
+    ]
+    revisions.sort(
+        key=lambda b: (
+            int(b.get("revision_number", 1) or 1),
+            str(b.get("created_at", "")),
+        )
+    )
+    return revisions
 
 def _sanitize(book: dict) -> dict:
     return {k: v for k, v in book.items() if k != "file_path"}
