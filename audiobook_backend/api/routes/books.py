@@ -16,6 +16,7 @@ from config import settings
 from models.schemas import Book, ProcessingStatus, Character, Gender
 from models.database import db
 from api.routes.auth import get_current_user
+from services.radio_markup import summarize_radio_cues
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/books", tags=["Books"])
@@ -197,6 +198,39 @@ async def parse_characters(
             "success": True,
             "characters": characters,
             "suggestions_count": len(suggested),
+        }
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+@router.post("/preview-radio-cues", response_model=dict)
+async def preview_radio_cues(
+    file: UploadFile = File(...),
+):
+    """
+    Parse radio-play markup directives from uploaded text and return cue preview.
+    This does not start pipeline processing.
+    """
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(415, f"Unsupported file type '{ext}'. Allowed: {ALLOWED_EXTENSIONS}")
+
+    content = await file.read()
+    size_mb = len(content) / (1024 * 1024)
+    if size_mb > MAX_FILE_SIZE_MB:
+        raise HTTPException(413, f"File too large ({size_mb:.1f} MB). Max: {MAX_FILE_SIZE_MB} MB")
+
+    temp_path = settings.UPLOAD_DIR / f"cue_preview_{uuid.uuid4().hex}{ext}"
+    temp_path.write_bytes(content)
+    try:
+        from services.text_extraction import extract_text
+        from services.radio_markup import parse_radio_cues
+
+        chapters_raw, _, _ = extract_text(temp_path)
+        cue_preview = parse_radio_cues(chapters_raw)
+        return {
+            "success": True,
+            **cue_preview,
         }
     finally:
         temp_path.unlink(missing_ok=True)

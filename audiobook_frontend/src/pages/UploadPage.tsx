@@ -12,7 +12,7 @@ import { Button } from '../components/UI/Button';
 import { Input } from '../components/UI/Input';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { Character, MusicProvider, MusicStylePreset } from '../types';
+import type { Character, MusicProvider, MusicStylePreset, RadioCue } from '../types';
 
 const ACCEPT = {
   'application/pdf': ['.pdf'],
@@ -67,6 +67,9 @@ export const UploadPage: React.FC = () => {
   const [showCharacterGuide, setShowCharacterGuide] = useState(false);
   const [characterDraft, setCharacterDraft] = useState<Character[]>([]);
   const [parsingCharacters, setParsingCharacters] = useState(false);
+  const [radioCues, setRadioCues] = useState<RadioCue[]>([]);
+  const [radioCueCounts, setRadioCueCounts] = useState<Record<string, number>>({});
+  const [parsingCues, setParsingCues] = useState(false);
 
   const navigate    = useNavigate();
   const queryClient = useQueryClient();
@@ -128,6 +131,7 @@ export const UploadPage: React.FC = () => {
     addMusic && musicProvider !== 'auto' && `Provider: ${musicProvider}`,
     addMusic && `Style: ${musicStylePreset}`,
     characterDraft.length > 0 && `Voices: ${characterDraft.length}`,
+    radioCues.length > 0 && `Cues: ${radioCues.length}`,
     exportFormat === 'm4b' && 'M4B',
   ].filter(Boolean).join(' · ');
 
@@ -150,6 +154,29 @@ export const UploadPage: React.FC = () => {
       toast.error(err?.response?.data?.detail ?? 'Could not parse characters');
     } finally {
       setParsingCharacters(false);
+    }
+  };
+
+  const previewRadioCues = async () => {
+    if (!file) {
+      toast.error('Upload a file first');
+      return;
+    }
+    setParsingCues(true);
+    try {
+      const result = await booksApi.previewRadioCues(file);
+      setRadioCues(result.cues || []);
+      setRadioCueCounts(result.cue_counts || {});
+      if (!result.cues?.length) {
+        toast('No radio cues found. Add SCENE/AMBIENCE/[FOLEY]/[MUSIC] tags.', { icon: 'ℹ️' });
+      } else {
+        toast.success(`Parsed ${result.cues.length} radio cues`);
+      }
+      setShowCharacterGuide(true);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? 'Could not parse radio cues');
+    } finally {
+      setParsingCues(false);
     }
   };
 
@@ -536,23 +563,59 @@ Archer: voice=Adam
 Wonderly: female
 Wonderly: voice=Rachel
 END CHARACTERS`}</pre>
+                    <pre className="mt-3 whitespace-pre-wrap text-dark-400">{`SCENE: Train station at night
+AMBIENCE: rain_city_night
+[FOLEY: footsteps_fast, pan=left_to_center, dist=near]
+[MUSIC: tension_low, fade_in=1.2]`}</pre>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-xs text-dark-400">
-                      Detect characters first, then choose each voice before processing.
+                      Detect characters and radio cues before processing.
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={parseCharacterDraft}
-                      loading={parsingCharacters}
-                      icon={<Wand2 size={14} />}
-                      disabled={!file}
-                    >
-                      Analyze Characters
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={parseCharacterDraft}
+                        loading={parsingCharacters}
+                        icon={<Wand2 size={14} />}
+                        disabled={!file}
+                      >
+                        Analyze Characters
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={previewRadioCues}
+                        loading={parsingCues}
+                        disabled={!file}
+                      >
+                        Analyze Cues
+                      </Button>
+                    </div>
                   </div>
+
+                  {radioCues.length > 0 && (
+                    <div className="bg-dark-900/40 border border-dark-700 rounded-lg p-3 space-y-2">
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {Object.entries(radioCueCounts).map(([k, v]) => (
+                          <span key={k} className="px-2 py-0.5 rounded bg-dark-800 text-dark-200">
+                            {k}: {v}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                        {radioCues.map((cue, idx) => (
+                          <div key={`${cue.type}-${idx}`} className="text-xs text-dark-300 flex items-center justify-between gap-3">
+                            <span className="font-mono text-brand-300">{cue.type.toUpperCase()}</span>
+                            <span className="flex-1 truncate">{cue.value}</span>
+                            <span className="text-dark-500">ch {cue.chapter_index + 1}, p {cue.paragraph_index + 1}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {characterDraft.length > 0 && (
                     <div className="space-y-2">

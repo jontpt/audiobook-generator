@@ -5,6 +5,7 @@ import type {
   Character,
   MusicProvider,
   MusicStylePreset,
+  RadioCue,
 } from '../types';
 
 export const booksApi = {
@@ -72,6 +73,21 @@ export const booksApi = {
     form.append('title', title);
     form.append('author', author);
     const res = await apiClient.post('/books/parse-characters', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  previewRadioCues: async (
+    file: File,
+  ): Promise<{
+    cues: RadioCue[];
+    cue_counts: Record<string, number>;
+    chapter_count: number;
+  }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await apiClient.post('/books/preview-radio-cues', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data;

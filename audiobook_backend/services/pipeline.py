@@ -48,7 +48,7 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
 
         # ─── 1. Text extraction ─────────────────────────────────────────────
         from services.text_extraction import extract_text
-        # extract_text now returns (chapters, char_declarations)
+        # extract_text now returns (chapters, char_declarations, voice_hints)
         chapters_raw, char_declarations, voice_hints = extract_text(file_path)
 
         if not chapters_raw:
@@ -64,6 +64,11 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
                 f"[{book_id[:8]}] CHARACTER voice hints found: {list(voice_hints.keys())}"
             )
 
+        # Strip phase-1 radio cues before NLP so markers don't leak into narration.
+        from services.radio_markup import parse_radio_markup, summarize_radio_cues
+        chapters_raw, radio_cues = parse_radio_markup(chapters_raw)
+        cue_counts = summarize_radio_cues(radio_cues)
+
         total_words = sum(
             sum(len(p.split()) for p in c.get("paragraphs", []))
             for c in chapters_raw
@@ -72,6 +77,8 @@ async def run_pipeline(book_id: str, file_path: Path, options: ProcessingOptions
         await _update(book_id, "extracting", 0.12,
                       f"Extracted {len(chapters_raw)} chapters, {total_words:,} words"
                       + (f" ({len(char_declarations)} declared chars)" if char_declarations else ""))
+        if radio_cues:
+            await db.update_by_id(db.books, book_id, {"radio_cues": radio_cues, "radio_cue_counts": cue_counts})
 
         # Optional predeclared voice plan stored at upload time / request.
         book_record = await db.get_by_id(db.books, book_id) or {}

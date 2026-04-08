@@ -139,6 +139,8 @@ class Book(BaseModel):
     music_provider_preference: str = "auto"
     music_style_preset: str = "auto"
     character_voice_plan: dict[str, str] = Field(default_factory=dict)
+    radio_cues: list[dict] = Field(default_factory=list)
+    radio_cue_counts: dict[str, int] = Field(default_factory=dict)
 
     export_path: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

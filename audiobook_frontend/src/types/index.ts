@@ -91,6 +91,8 @@ export interface Book {
   status_reason?: string;
   draft_characters?: Character[];
   character_voice_candidates?: Record<string, string[]>;
+  radio_cues?: RadioCue[];
+  radio_cue_counts?: Record<string, number>;
   file_type?: string;
   status: ProcessingStatus;
   progress: number;
@@ -104,6 +106,15 @@ export interface Book {
   updated_at: string;
   characters?: Character[];
   chapters?: Chapter[];
+}
+
+export interface RadioCue {
+  type: 'scene' | 'ambience' | 'foley' | 'music';
+  value: string;
+  label: string;
+  params: Record<string, string>;
+  chapter_index: number;
+  paragraph_index: number;
 }
 
 export interface ExportStatus {
