@@ -1,0 +1,127 @@
+Score: mozart-great-mass-grosse-messe-in-c-minor-k-427-i-kyrie.mxl
+Importing music21...
+  OK
+Parsing score...
+  OK - 18 parts
+    Part 0: Oboi.
+    Part 1: Fagotti.
+    Part 2: Corni in C.
+    Part 3: Trombe in C.
+    Part 4: Timpani in C.G.
+    Part 5: Trombone I.
+    Part 6: Trombone II.
+    Part 7: Trombone III.
+    Part 8: Violino I.
+    Part 9: Violino II.
+    Part 10: Viola.
+    Part 11: Soprano Solo.
+    Part 12: Soprano.
+    Part 13: Alto.
+    Part 14: Tenore.
+    Part 15: Basso.
+    Part 16: Violoncello, Basso ed Organo.
+    Part 17: Organo
+Importing engine + instruments...
+  OK
+Converting to concert pitch...
+  OK
+Targets: ['Trumpet', 'Trumpet', 'French Horn', 'Trombone', 'Tuba']
+Running arrange()...
+Converting to concert pitch...
+Analyzing source score...
+  Source: Oboi. [60-84] (woodwind)
+  Source: Fagotti. [41-67] (woodwind)
+  Source: Corni in C. [48-67] (brass)
+  Source: Trombe in C. [60-79] (brass)
+  Source: Timpani in C.G. [43-48] (percussion)
+  Source: Trombone I. [55-72] (brass, voice)
+  Source: Trombone II. [48-67] (brass, voice)
+  Source: Trombone III. [43-62] (brass)
+  Source: Violino I. [55-86] (string)
+  Source: Violino II. [55-82] (string)
+  Source: Viola. [48-73] (string)
+  Source: Soprano Solo. [56-80] (voice)
+  Source: Soprano. [60-79] (voice)
+  Source: Alto. [55-72] (voice)
+  Source: Tenore. [48-67] (voice)
+  Source: Basso. [43-62] (unknown)
+  Source: Violoncello, Basso ed Organo. [29-67] (keyboard, string)
+  Source: Organo [29-74] (keyboard)
+  Melodic thread: analyzing 17 source parts...
+  Melodic thread: 936 notes, range [53–80], median=67
+  → Injecting melodic thread as primary melody source
+
+Target: Trumpet, Trumpet, French Horn, Trombone, Tuba
+
+Assigning parts (register-matched)...
+  Melodic Thread -> Trumpet in Bb 1 (melody thread, top slot)
+  Soprano. -> Trumpet in Bb 2 (primary, 10269 notes)
+  Soprano Solo. -> Horn in F (primary, 10169 notes)
+  Alto. -> Trombone (primary, 10167 notes)
+  Tenore. -> Tuba (primary, 10142 notes)
+  Trombone I. -> Trumpet in Bb 1 (secondary)
+  Trombone II. -> Horn in F (secondary)
+  Violoncello, Basso ed Organo. -> Trombone (secondary)
+  Violino I. -> Trumpet in Bb 1 (secondary)
+  Violino II. -> Trumpet in Bb 1 (secondary)
+  Organo -> Trombone (secondary)
+  Viola. -> Horn in F (secondary)
+  Fagotti. -> Trombone (secondary)
+  Oboi. -> Trumpet in Bb 1 (secondary)
+  Basso. -> Trombone (secondary)
+  Trombone III. -> Trombone (secondary)
+  Corni in C. -> Horn in F (secondary)
+  Trombe in C. -> Trumpet in Bb 1 (secondary)
+
+Rendering arrangement...
+  Trumpet in Bb 1: primary='Melodic Thread' +5 fill-in +0 gaps +0 empty
+  Trumpet in Bb 2: primary='Soprano.' +0 fill-in +123 gaps +174 empty
+  Horn in F: primary='Soprano Solo.' +3 fill-in +113 gaps +0 empty
+  Trombone: primary='Alto.' +5 fill-in +105 gaps +0 empty
+  Tuba: primary='Tenore.' +0 fill-in +163 gaps +151 empty
+
+Smoothing octave consistency...
+  329 octave correction(s) applied
+
+── Diagnostic: Voice Assignment Coverage ──
+  Trumpet in Bb 1  [lead]
+    notes=934  rests=6 | primary='Melodic Thread' fill-in=5
+    ⚠ 2 pairs uncovered
+    Top sources: Soprano Solo. ×3
+    slot gap=3 | empty measure=0
+  Trumpet in Bb 2  [upper]
+    notes=566  rests=6 | primary='Soprano.' fill-in=0
+    ⚠ 2 pairs uncovered
+    Top sources: Soprano Solo. ×3
+    slot gap=3 | empty measure=0
+  Horn in F  [middle]
+    notes=530  rests=6 | primary='Soprano Solo.' fill-in=3
+    ⚠ 2 pairs uncovered
+    Top sources: Soprano Solo. ×3
+    slot gap=3 | empty measure=0
+  Trombone  [lower]
+    notes=465  rests=4 | primary='Alto.' fill-in=5
+    ⚠ 2 pairs uncovered
+    Top sources: Soprano Solo. ×3
+    slot gap=3 | empty measure=0
+  Tuba  [bass]
+    notes=456  rests=4 | primary='Tenore.' fill-in=0
+    ⚠ 2 pairs uncovered
+    Top sources: Soprano Solo. ×3
+    slot gap=3 | empty measure=0
+  All source parts assigned.
+────────────────────────────────────────────
+
+Applying voicing rules...
+
+Applying transpositions for written pitch...
+  Trumpet in Bb 1: +2 semitones for written pitch
+  Trumpet in Bb 2: +2 semitones for written pitch
+  Horn in F: +7 semitones for written pitch
+  Trombone: concert pitch (no transposition)
+  Tuba: concert pitch (no transposition)
+
+✅ Done: 5 output parts
+  Done - 5 output parts
+Saved: mozart_brass_quintet_test.musicxml
+SUCCESS
