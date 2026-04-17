@@ -1031,6 +1031,13 @@ class OctaveEditorDialog(QDialog):
                 return el
         return None
 
+    @staticmethod
+    def _measure_by_number(part: stream.Part, measure_num: int) -> Optional[stream.Measure]:
+        for measure in part.getElementsByClass(stream.Measure):
+            if measure.number == measure_num:
+                return measure
+        return None
+
     def _insert_selected_pitch(self, item: "OctaveEditorDialog.StaffNoteItem", dest_part: stream.Part) -> bool:
         pitch_midi = int(item.pitch_obj.midi)
         dest_measure = self._get_or_create_measure(dest_part, item.measure_num, item.source_measure)
@@ -1115,6 +1122,76 @@ class OctaveEditorDialog(QDialog):
             return True
         return False
 
+    def _replace_pitch_by_location(
+        self,
+        part_label: str,
+        measure_num: int,
+        beat: float,
+        old_midi: int,
+        new_midi: int,
+    ) -> bool:
+        """Replace a pitch in the current score using stable musical coordinates."""
+        part = self.part_map.get(part_label)
+        if part is None:
+            return False
+        source_measure = self._measure_by_number(part, measure_num)
+        if source_measure is None:
+            return False
+        event = self._event_at_offset(source_measure, beat)
+        if event is None:
+            return False
+
+        new_midi = max(0, min(127, int(new_midi)))
+        if isinstance(event, note.Note):
+            if event.pitch.midi == new_midi:
+                return False
+            event.pitch.midi = new_midi
+            return True
+
+        if isinstance(event, chord.Chord):
+            old_pitches = list(event.pitches)
+            if not old_pitches:
+                return False
+            replaced = False
+            used_old_idx: Optional[int] = None
+            for idx, p in enumerate(old_pitches):
+                if p.midi == int(old_midi):
+                    used_old_idx = idx
+                    break
+            if used_old_idx is None:
+                return False
+
+            new_pitches = []
+            for idx, p in enumerate(old_pitches):
+                cp = copy.deepcopy(p)
+                if idx == used_old_idx:
+                    if cp.midi != new_midi:
+                        cp.midi = new_midi
+                        replaced = True
+                new_pitches.append(cp)
+            if not replaced:
+                return False
+
+            rebuilt = []
+            seen = set()
+            for p in new_pitches:
+                if p.midi in seen:
+                    continue
+                seen.add(p.midi)
+                rebuilt.append(p)
+
+            source_measure.remove(event)
+            if len(rebuilt) == 1:
+                new_note = note.Note(rebuilt[0])
+                self._copy_event_metadata(event, new_note, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(beat, new_note)
+            else:
+                new_chord = chord.Chord(rebuilt)
+                self._copy_event_metadata(event, new_chord, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(beat, new_chord)
+            return True
+        return False
+
     def _remove_pitch_group(
         self,
         source_measure: stream.Measure,
@@ -1160,15 +1237,19 @@ class OctaveEditorDialog(QDialog):
         action = "+8va" if semitones > 0 else "-8va"
         try:
             self._push_undo_snapshot(action)
-            changed = 0
-            for item in items:
-                if self._replace_pitch_at_item(item, int(item.pitch_obj.midi) + semitones):
-                    changed += 1
             current = self.part_combo.currentText()
+            refs = [
+                (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
+                for item in items
+            ]
+            changed = 0
+            for measure_num, beat, old_midi in refs:
+                if self._replace_pitch_by_location(current, measure_num, beat, old_midi, old_midi + semitones):
+                    changed += 1
             if current:
                 self._selection_by_part[current] = {
-                    (item.measure_num, round(float(item.beat), 6), max(0, min(127, int(item.pitch_obj.midi) + semitones)))
-                    for item in items
+                    (measure_num, beat, max(0, min(127, old_midi + semitones)))
+                    for measure_num, beat, old_midi in refs
                 }
             self._log(f"{action} applied to {changed} selected note(s)")
             self._refresh_note_list()
