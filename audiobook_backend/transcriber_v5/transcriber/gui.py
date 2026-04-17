@@ -511,7 +511,7 @@ class OctaveEditorDialog(QDialog):
         layout.addLayout(top_row)
 
         self.scene = QGraphicsScene(self)
-        self.scene.selectionChanged.connect(self._update_selection_summary)
+        self.scene.selectionChanged.connect(self._on_scene_selection_changed)
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHints(self.view.renderHints())
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
@@ -612,6 +612,13 @@ class OctaveEditorDialog(QDialog):
         except Exception:
             pass
         self._log(f"{context} failed: {exc}")
+
+    def _on_scene_selection_changed(self) -> None:
+        """Guard selection updates from bubbling Qt RuntimeErrors."""
+        try:
+            self._update_selection_summary()
+        except Exception as exc:
+            self._log_exception("scene selectionChanged", exc)
 
     def _note_item_key(self, item: "OctaveEditorDialog.StaffNoteItem") -> Tuple[int, float, int]:
         return (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
@@ -836,70 +843,73 @@ class OctaveEditorDialog(QDialog):
         return result
 
     def _refresh_note_list(self) -> None:
-        if self.active_part_label and self.note_items:
-            self._capture_selection(self.active_part_label)
-        self._suspend_selection_updates = True
-        self.scene.blockSignals(True)
         try:
-            self.scene.clear()
-        finally:
-            self.scene.blockSignals(False)
-            self._suspend_selection_updates = False
-        self.note_items = []
-        part_label = self.part_combo.currentText()
-        self.active_part_label = part_label
-        part = self.part_map.get(part_label)
-        if not part:
-            return
+            if self.active_part_label and self.note_items:
+                self._capture_selection(self.active_part_label)
+            self._suspend_selection_updates = True
+            self.scene.blockSignals(True)
+            try:
+                self.scene.clear()
+            finally:
+                self.scene.blockSignals(False)
+                self._suspend_selection_updates = False
+            self.note_items = []
+            part_label = self.part_combo.currentText()
+            self.active_part_label = part_label
+            part = self.part_map.get(part_label)
+            if not part:
+                return
 
-        allowed_measures = self._parse_measure_filter()
-        measures = []
-        for measure in part.getElementsByClass(stream.Measure):
-            if allowed_measures is not None and measure.number not in allowed_measures:
-                continue
-            measures.append(measure)
+            allowed_measures = self._parse_measure_filter()
+            measures = []
+            for measure in part.getElementsByClass(stream.Measure):
+                if allowed_measures is not None and measure.number not in allowed_measures:
+                    continue
+                measures.append(measure)
 
-        if not measures:
-            self._log("No measures matched the current filter")
-            self.selection_label.setText("No notes selected")
-            return
+            if not measures:
+                self._log("No measures matched the current filter")
+                self.selection_label.setText("No notes selected")
+                return
 
-        part_midis = [
-            n.pitch.midi
-            for n in part.recurse().notes
-            if hasattr(n, "pitch")
-        ]
-        center_midi = int(sum(part_midis) / len(part_midis)) if part_midis else 67
+            part_midis = [
+                n.pitch.midi
+                for n in part.recurse().notes
+                if hasattr(n, "pitch")
+            ]
+            center_midi = int(sum(part_midis) / len(part_midis)) if part_midis else 67
 
-        measure_width = 220
-        measure_height = 170
-        measures_per_row = 4
-        x_margin = 28
-        y_margin = 24
-        self.scene.setBackgroundBrush(Qt.white)
+            measure_width = 220
+            measure_height = 170
+            measures_per_row = 4
+            x_margin = 28
+            y_margin = 24
+            self.scene.setBackgroundBrush(Qt.white)
 
-        for idx, measure in enumerate(measures):
-            col = idx % measures_per_row
-            row = idx // measures_per_row
-            origin_x = col * measure_width
-            origin_y = row * measure_height
-            self._draw_measure(
-                part_label=part_label,
-                measure=measure,
-                origin_x=origin_x,
-                origin_y=origin_y,
-                measure_width=measure_width,
-                measure_height=measure_height,
-                center_midi=center_midi,
-                x_margin=x_margin,
-                y_margin=y_margin,
-            )
+            for idx, measure in enumerate(measures):
+                col = idx % measures_per_row
+                row = idx // measures_per_row
+                origin_x = col * measure_width
+                origin_y = row * measure_height
+                self._draw_measure(
+                    part_label=part_label,
+                    measure=measure,
+                    origin_x=origin_x,
+                    origin_y=origin_y,
+                    measure_width=measure_width,
+                    measure_height=measure_height,
+                    center_midi=center_midi,
+                    x_margin=x_margin,
+                    y_margin=y_margin,
+                )
 
-        rows = (len(measures) + measures_per_row - 1) // measures_per_row
-        self.scene.setSceneRect(0, 0, measures_per_row * measure_width, rows * measure_height)
-        self._restore_selection(part_label)
-        self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} selectable note(s)")
-        self._update_selection_summary()
+            rows = (len(measures) + measures_per_row - 1) // measures_per_row
+            self.scene.setSceneRect(0, 0, measures_per_row * measure_width, rows * measure_height)
+            self._restore_selection(part_label)
+            self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} selectable note(s)")
+            self._update_selection_summary()
+        except Exception as exc:
+            self._log_exception("refresh note list", exc)
 
     def _draw_measure(
         self,
@@ -1376,28 +1386,37 @@ class OctaveEditorDialog(QDialog):
         self._update_selection_summary()
 
     def _clear_selection(self) -> None:
-        self.scene.clearSelection()
-        self._update_selection_summary()
+        try:
+            self.scene.clearSelection()
+            self._update_selection_summary()
+        except Exception as exc:
+            self._log_exception("clear selection", exc)
 
     def _update_selection_summary(self) -> None:
-        if self._suspend_selection_updates:
-            return
-        selected = self._selected_note_items()
-        current = self.part_combo.currentText()
-        if current:
-            self._selection_by_part[current] = {self._note_item_key(item) for item in selected}
-        for item in self.note_items:
-            item._apply_style(item.isSelected())
-        if not selected:
-            self.selection_label.setText("No notes selected")
-            return
-        preview = ", ".join(
-            f"M{item.measure_num} beat {item.beat:.2f} {item.pitch_obj.nameWithOctave}"
-            for item in selected[:6]
-        )
-        if len(selected) > 6:
-            preview += f", ... ({len(selected)} selected)"
-        self.selection_label.setText(preview)
+        try:
+            if self._suspend_selection_updates:
+                return
+            selected = self._selected_note_items()
+            current = self.part_combo.currentText()
+            if current:
+                self._selection_by_part[current] = {self._note_item_key(item) for item in selected}
+            for item in self.note_items:
+                try:
+                    item._apply_style(item.isSelected())
+                except RuntimeError:
+                    continue
+            if not selected:
+                self.selection_label.setText("No notes selected")
+                return
+            preview = ", ".join(
+                f"M{item.measure_num} beat {item.beat:.2f} {item.pitch_obj.nameWithOctave}"
+                for item in selected[:6]
+            )
+            if len(selected) > 6:
+                preview += f", ... ({len(selected)} selected)"
+            self.selection_label.setText(preview)
+        except Exception as exc:
+            self._log_exception("update selection summary", exc)
 
     def _save(self) -> None:
         if not self.score:
