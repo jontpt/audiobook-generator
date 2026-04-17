@@ -607,7 +607,7 @@ class OctaveEditorDialog(QDialog):
         label = part_label or self.part_combo.currentText()
         if not label:
             return
-        keys = {self._note_item_key(item) for item in self.note_items if item.isSelected()}
+        keys = {self._note_item_key(item) for item in self._selected_note_items()}
         self._selection_by_part[label] = keys
 
     def _restore_selection(self, part_label: str) -> None:
@@ -627,9 +627,12 @@ class OctaveEditorDialog(QDialog):
         if self.score is None:
             return {}
         self._capture_selection(self.part_combo.currentText())
+        score_xml = self._serialize_score_to_xml()
+        if score_xml is None:
+            return {}
         return {
             "action": action,
-            "score": copy.deepcopy(self.score),
+            "score_xml": score_xml,
             "selection": copy.deepcopy(self._selection_by_part),
             "active_part": self.part_combo.currentText(),
             "target_part": self.target_part_combo.currentText(),
@@ -652,13 +655,45 @@ class OctaveEditorDialog(QDialog):
         if self.redo_btn is not None:
             self.redo_btn.setEnabled(bool(self.redo_stack))
 
+    def _serialize_score_to_xml(self) -> Optional[str]:
+        """Serialize current score to MusicXML text for undo/redo snapshots."""
+        if self.score is None:
+            return None
+        tmp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(prefix="utrans_editor_", suffix=".musicxml", delete=False) as tmp:
+                tmp_path = tmp.name
+            self.score.write("musicxml", fp=tmp_path)
+            with open(tmp_path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except Exception as e:
+            self._log(f"History snapshot failed: {e}")
+            return None
+        finally:
+            if tmp_path:
+                try:
+                    Path(tmp_path).unlink()
+                except Exception:
+                    pass
+
+    def _deserialize_score_from_xml(self, xml_text: str) -> Optional[stream.Score]:
+        """Deserialize MusicXML text back to a music21 score."""
+        try:
+            return converter.parseData(xml_text)
+        except Exception as e:
+            self._log(f"History restore failed: {e}")
+            return None
+
     def _restore_snapshot(self, snap: Dict[str, Any]) -> None:
         if not snap:
             return
-        restored_score = snap.get("score")
+        score_xml = snap.get("score_xml")
+        if not score_xml:
+            return
+        restored_score = self._deserialize_score_from_xml(score_xml)
         if restored_score is None:
             return
-        self.score = copy.deepcopy(restored_score)
+        self.score = restored_score
         self._selection_by_part = copy.deepcopy(snap.get("selection", {}))
         preferred_part = snap.get("active_part", "")
         preferred_target = snap.get("target_part", "")
@@ -672,28 +707,36 @@ class OctaveEditorDialog(QDialog):
     def _undo(self) -> None:
         if not self.undo_stack:
             return
-        current = self._snapshot_state("redo")
-        snap = self.undo_stack.pop()
-        if current:
-            self.redo_stack.append(current)
-            if len(self.redo_stack) > self.max_history:
-                self.redo_stack = self.redo_stack[-self.max_history:]
-        self._restore_snapshot(snap)
-        self._log(f"Undo: {snap.get('action', 'edit')}")
-        self._update_history_buttons()
+        try:
+            current = self._snapshot_state("redo")
+            snap = self.undo_stack.pop()
+            if current:
+                self.redo_stack.append(current)
+                if len(self.redo_stack) > self.max_history:
+                    self.redo_stack = self.redo_stack[-self.max_history:]
+            self._restore_snapshot(snap)
+            self._log(f"Undo: {snap.get('action', 'edit')}")
+            self._update_history_buttons()
+        except Exception as e:
+            self._log(f"Undo failed: {e}")
+            self._update_history_buttons()
 
     def _redo(self) -> None:
         if not self.redo_stack:
             return
-        current = self._snapshot_state("undo")
-        snap = self.redo_stack.pop()
-        if current:
-            self.undo_stack.append(current)
-            if len(self.undo_stack) > self.max_history:
-                self.undo_stack = self.undo_stack[-self.max_history:]
-        self._restore_snapshot(snap)
-        self._log(f"Redo: {snap.get('action', 'edit')}")
-        self._update_history_buttons()
+        try:
+            current = self._snapshot_state("undo")
+            snap = self.redo_stack.pop()
+            if current:
+                self.undo_stack.append(current)
+                if len(self.undo_stack) > self.max_history:
+                    self.undo_stack = self.undo_stack[-self.max_history:]
+            self._restore_snapshot(snap)
+            self._log(f"Redo: {snap.get('action', 'edit')}")
+            self._update_history_buttons()
+        except Exception as e:
+            self._log(f"Redo failed: {e}")
+            self._update_history_buttons()
 
     def _populate_part_controls(
         self,
@@ -782,7 +825,13 @@ class OctaveEditorDialog(QDialog):
     def _refresh_note_list(self) -> None:
         if self.active_part_label and self.note_items:
             self._capture_selection(self.active_part_label)
-        self.scene.clear()
+        self._suspend_selection_updates = True
+        self.scene.blockSignals(True)
+        try:
+            self.scene.clear()
+        finally:
+            self.scene.blockSignals(False)
+            self._suspend_selection_updates = False
         self.note_items = []
         part_label = self.part_combo.currentText()
         self.active_part_label = part_label
@@ -913,7 +962,14 @@ class OctaveEditorDialog(QDialog):
                 self.scene.addItem(stem)
 
     def _selected_note_items(self) -> List["OctaveEditorDialog.StaffNoteItem"]:
-        selected = [item for item in self.note_items if item.isSelected()]
+        selected = []
+        for item in self.note_items:
+            try:
+                if item.scene() is not None and item.isSelected():
+                    selected.append(item)
+            except RuntimeError:
+                # Item may have been deleted during a scene refresh.
+                continue
         unique = []
         seen = set()
         for item in selected:
@@ -1102,19 +1158,23 @@ class OctaveEditorDialog(QDialog):
             QMessageBox.information(self, "No Selection", "Select one or more notes first.")
             return
         action = "+8va" if semitones > 0 else "-8va"
-        self._push_undo_snapshot(action)
-        changed = 0
-        for item in items:
-            if self._replace_pitch_at_item(item, int(item.pitch_obj.midi) + semitones):
-                changed += 1
-        current = self.part_combo.currentText()
-        if current:
-            self._selection_by_part[current] = {
-                (item.measure_num, round(float(item.beat), 6), max(0, min(127, int(item.pitch_obj.midi) + semitones)))
-                for item in items
-            }
-        self._log(f"{action} applied to {changed} selected note(s)")
-        self._refresh_note_list()
+        try:
+            self._push_undo_snapshot(action)
+            changed = 0
+            for item in items:
+                if self._replace_pitch_at_item(item, int(item.pitch_obj.midi) + semitones):
+                    changed += 1
+            current = self.part_combo.currentText()
+            if current:
+                self._selection_by_part[current] = {
+                    (item.measure_num, round(float(item.beat), 6), max(0, min(127, int(item.pitch_obj.midi) + semitones)))
+                    for item in items
+                }
+            self._log(f"{action} applied to {changed} selected note(s)")
+            self._refresh_note_list()
+        except Exception as e:
+            self._log(f"{action} failed: {e}")
+            QMessageBox.critical(self, "Editor Error", f"Octave operation failed:\n\n{e}")
 
     def _raise_selected(self) -> None:
         self._shift_selected(12)
