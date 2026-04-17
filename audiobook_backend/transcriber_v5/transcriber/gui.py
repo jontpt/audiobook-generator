@@ -9,6 +9,7 @@ import copy
 import re
 import shutil
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -600,6 +601,18 @@ class OctaveEditorDialog(QDialog):
     def _log(self, text: str) -> None:
         self.status_box.appendPlainText(text)
 
+    def _log_exception(self, context: str, exc: Exception) -> None:
+        """Capture editor exceptions to disk for crash diagnosis."""
+        try:
+            log_path = Path(__file__).resolve().parents[1] / "editor_error.txt"
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write(f"[{context}] {exc}\n")
+                handle.write(traceback.format_exc())
+                handle.write("\n")
+        except Exception:
+            pass
+        self._log(f"{context} failed: {exc}")
+
     def _note_item_key(self, item: "OctaveEditorDialog.StaffNoteItem") -> Tuple[int, float, int]:
         return (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
 
@@ -973,12 +986,15 @@ class OctaveEditorDialog(QDialog):
         unique = []
         seen = set()
         for item in selected:
-            key = (
-                item.measure_num,
-                round(float(item.beat), 6),
-                int(item.pitch_obj.midi),
-                isinstance(item.event_obj, chord.Chord),
-            )
+            try:
+                key = (
+                    item.measure_num,
+                    round(float(item.beat), 6),
+                    int(item.pitch_obj.midi),
+                    isinstance(item.event_obj, chord.Chord),
+                )
+            except RuntimeError:
+                continue
             if key in seen:
                 continue
             seen.add(key)
@@ -1230,12 +1246,12 @@ class OctaveEditorDialog(QDialog):
         return 0
 
     def _shift_selected(self, semitones: int) -> None:
-        items = self._selected_note_items()
-        if not items:
-            QMessageBox.information(self, "No Selection", "Select one or more notes first.")
-            return
         action = "+8va" if semitones > 0 else "-8va"
         try:
+            items = self._selected_note_items()
+            if not items:
+                QMessageBox.information(self, "No Selection", "Select one or more notes first.")
+                return
             self._push_undo_snapshot(action)
             current = self.part_combo.currentText()
             refs = [
@@ -1254,8 +1270,8 @@ class OctaveEditorDialog(QDialog):
             self._log(f"{action} applied to {changed} selected note(s)")
             self._refresh_note_list()
         except Exception as e:
-            self._log(f"{action} failed: {e}")
-            QMessageBox.critical(self, "Editor Error", f"Octave operation failed:\n\n{e}")
+            self._log_exception(action, e)
+            QMessageBox.warning(self, "Editor Error", f"Octave operation failed:\n\n{e}")
 
     def _raise_selected(self) -> None:
         self._shift_selected(12)

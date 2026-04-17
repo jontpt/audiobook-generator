@@ -79,3 +79,22 @@ except Exception as e:
     
     log("DONE")
     sys.exit(1)
+
+def _qt_excepthook(exc_type, exc_value, exc_tb):
+    """Capture uncaught Qt callback exceptions to the same crash log."""
+    try:
+        tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    except Exception:
+        tb = f"{exc_type}: {exc_value}"
+    try:
+        log("UNCAUGHT QT EXCEPTION:")
+        log(tb)
+    except Exception:
+        pass
+    # Preserve default stderr behavior as well.
+    try:
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+    except Exception:
+        pass
+
+sys.excepthook = _qt_excepthook
