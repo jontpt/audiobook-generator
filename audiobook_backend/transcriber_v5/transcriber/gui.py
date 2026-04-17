@@ -45,7 +45,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from music21 import converter, instrument, stream
+from music21 import chord, converter, instrument, note, stream
 
 from .constants import (
     DEFAULT_TITLE_FONT_SIZE,
@@ -406,10 +406,10 @@ class AudiverisSetupDialog(QDialog):
 
 
 class OctaveEditorDialog(QDialog):
-    """Visual note editor for applying one-click octave fixes on a staff view."""
+    """Visual note editor for octave and cross-part voicing fixes."""
 
     class StaffNoteItem(QGraphicsEllipseItem):
-        """Clickable notehead tied to a music21 note or chord event."""
+        """Clickable notehead bound to an editable score event/pitch."""
 
         def __init__(
             self,
@@ -417,15 +417,23 @@ class OctaveEditorDialog(QDialog):
             y: float,
             width: float,
             height: float,
+            part_label: str,
+            source_measure: stream.Measure,
             event_obj: Any,
+            pitch_obj: Any,
             measure_num: int,
             beat: float,
+            duration_ql: float,
             pitch_text: str,
         ) -> None:
             super().__init__(x, y, width, height)
+            self.part_label = part_label
+            self.source_measure = source_measure
             self.event_obj = event_obj
+            self.pitch_obj = pitch_obj
             self.measure_num = measure_num
             self.beat = beat
+            self.duration_ql = duration_ql
             self.pitch_text = pitch_text
             self.setFlag(QGraphicsItem.ItemIsSelectable, True)
             self.setFlag(QGraphicsItem.ItemIsFocusable, True)
@@ -453,9 +461,11 @@ class OctaveEditorDialog(QDialog):
         self.score: Optional[stream.Score] = None
         self.part_map: Dict[str, stream.Part] = {}
         self.note_items: List[OctaveEditorDialog.StaffNoteItem] = []
-        self.setWindowTitle("8va Editor")
+        self.copy_btn: Optional[QPushButton] = None
+        self.move_btn: Optional[QPushButton] = None
+        self.setWindowTitle("Visual Octave + Voicing Editor")
         self.setModal(True)
-        self.resize(1100, 760)
+        self.resize(1180, 790)
         self._init_ui()
         self._load_score()
 
@@ -463,20 +473,26 @@ class OctaveEditorDialog(QDialog):
         layout = QVBoxLayout()
         layout.setSpacing(10)
 
-        title = QLabel("8va Editor")
+        title = QLabel("Visual Octave + Voicing Editor")
         title.setStyleSheet("font-size: 15px; font-weight: bold; color: #2196F3;")
         layout.addWidget(title)
 
-        hint = QLabel("Choose a part, optionally narrow the measure range, select notes, then click +8va.")
+        hint = QLabel(
+            "Select notes directly on the staff. Use +8va/-8va for octave edits, "
+            "or move/copy selected notes to another part for voicing corrections."
+        )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #555; font-size: 11px;")
         layout.addWidget(hint)
 
         top_row = QHBoxLayout()
-        top_row.addWidget(QLabel("Part:"))
+        top_row.addWidget(QLabel("Edit Part:"))
         self.part_combo = QComboBox()
-        self.part_combo.currentTextChanged.connect(self._refresh_note_list)
+        self.part_combo.currentTextChanged.connect(self._on_part_changed)
         top_row.addWidget(self.part_combo, 2)
+        top_row.addWidget(QLabel("Move/Copy To:"))
+        self.target_part_combo = QComboBox()
+        top_row.addWidget(self.target_part_combo, 2)
         top_row.addWidget(QLabel("Measures:"))
         self.measure_edit = QLineEdit()
         self.measure_edit.setPlaceholderText("e.g. 21-23, 53, 80-83")
@@ -484,7 +500,6 @@ class OctaveEditorDialog(QDialog):
         top_row.addWidget(self.measure_edit, 3)
         layout.addLayout(top_row)
 
-        self.note_list = QListWidget()
         self.scene = QGraphicsScene(self)
         self.scene.selectionChanged.connect(self._update_selection_summary)
         self.view = QGraphicsView(self.scene)
@@ -507,15 +522,30 @@ class OctaveEditorDialog(QDialog):
         layout.addWidget(self.selection_label)
 
         btn_row = QHBoxLayout()
-        self.raise_btn = QPushButton("+8va Selected")
-        self.raise_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px 16px;")
-        self.raise_btn.clicked.connect(self._raise_selected)
-        btn_row.addWidget(self.raise_btn)
+        raise_btn = QPushButton("+8va Selected")
+        raise_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px 16px;")
+        raise_btn.clicked.connect(self._raise_selected)
+        btn_row.addWidget(raise_btn)
 
         lower_btn = QPushButton("-8va Selected")
         lower_btn.setStyleSheet("background-color: #455A64; color: white; padding: 8px 16px;")
         lower_btn.clicked.connect(self._lower_selected)
         btn_row.addWidget(lower_btn)
+
+        self.copy_btn = QPushButton("Copy To Part")
+        self.copy_btn.setStyleSheet("background-color: #6A1B9A; color: white; padding: 8px 16px;")
+        self.copy_btn.clicked.connect(lambda: self._transfer_selected(move=False))
+        btn_row.addWidget(self.copy_btn)
+
+        self.move_btn = QPushButton("Move To Part")
+        self.move_btn.setStyleSheet("background-color: #8E24AA; color: white; padding: 8px 16px;")
+        self.move_btn.clicked.connect(lambda: self._transfer_selected(move=True))
+        btn_row.addWidget(self.move_btn)
+
+        delete_btn = QPushButton("Delete Selected")
+        delete_btn.setStyleSheet("background-color: #C62828; color: white; padding: 8px 16px;")
+        delete_btn.clicked.connect(self._delete_selected)
+        btn_row.addWidget(delete_btn)
 
         select_all_btn = QPushButton("Select Visible")
         select_all_btn.setStyleSheet("background-color: #546E7A; color: white; padding: 8px 16px;")
@@ -556,12 +586,36 @@ class OctaveEditorDialog(QDialog):
         self.part_combo.blockSignals(True)
         self.part_combo.clear()
         for i, part in enumerate(self.score.parts):
-            label = part.partName or f"Part {i + 1}"
+            base_label = part.partName or f"Part {i + 1}"
+            label = base_label
+            suffix = 2
+            while label in self.part_map:
+                label = f"{base_label} ({suffix})"
+                suffix += 1
             self.part_map[label] = part
             self.part_combo.addItem(label)
         self.part_combo.blockSignals(False)
+        self._refresh_target_parts()
         self._log(f"Loaded: {Path(self.musicxml_path).name}")
         self._refresh_note_list()
+
+    def _on_part_changed(self) -> None:
+        self._refresh_target_parts()
+        self._refresh_note_list()
+
+    def _refresh_target_parts(self) -> None:
+        current = self.part_combo.currentText()
+        self.target_part_combo.blockSignals(True)
+        self.target_part_combo.clear()
+        for label in self.part_map:
+            if label != current:
+                self.target_part_combo.addItem(label)
+        self.target_part_combo.blockSignals(False)
+        has_other = self.target_part_combo.count() > 0
+        if self.copy_btn is not None:
+            self.copy_btn.setEnabled(has_other)
+        if self.move_btn is not None:
+            self.move_btn.setEnabled(has_other)
 
     def _parse_measure_filter(self) -> Optional[set]:
         text = self.measure_edit.text().strip()
@@ -589,7 +643,8 @@ class OctaveEditorDialog(QDialog):
     def _refresh_note_list(self) -> None:
         self.scene.clear()
         self.note_items = []
-        part = self.part_map.get(self.part_combo.currentText())
+        part_label = self.part_combo.currentText()
+        part = self.part_map.get(part_label)
         if not part:
             return
 
@@ -625,23 +680,25 @@ class OctaveEditorDialog(QDialog):
             origin_x = col * measure_width
             origin_y = row * measure_height
             self._draw_measure(
-                measure,
-                origin_x,
-                origin_y,
-                measure_width,
-                measure_height,
-                center_midi,
-                x_margin,
-                y_margin,
+                part_label=part_label,
+                measure=measure,
+                origin_x=origin_x,
+                origin_y=origin_y,
+                measure_width=measure_width,
+                measure_height=measure_height,
+                center_midi=center_midi,
+                x_margin=x_margin,
+                y_margin=y_margin,
             )
 
         rows = (len(measures) + measures_per_row - 1) // measures_per_row
         self.scene.setSceneRect(0, 0, measures_per_row * measure_width, rows * measure_height)
-        self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} note event(s)")
+        self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} selectable note(s)")
         self._update_selection_summary()
 
     def _draw_measure(
         self,
+        part_label: str,
         measure: stream.Measure,
         origin_x: float,
         origin_y: float,
@@ -687,17 +744,22 @@ class OctaveEditorDialog(QDialog):
 
             x = staff_left + 8 + (float(el.offset) / bar_ql) * note_area_width
             pitch_text = ".".join(p.nameWithOctave for p in pitches)
+            duration_ql = float(getattr(el.duration, "quarterLength", 1.0) or 1.0)
             for p_idx, p in enumerate(sorted(pitches, key=lambda pitch: pitch.midi, reverse=True)):
                 y = center_y - (p.midi - center_midi) * 3.0 + p_idx * 3
                 note_item = self.StaffNoteItem(
-                    x,
-                    y,
-                    12,
-                    8,
-                    el,
-                    measure.number,
-                    float(el.offset),
-                    pitch_text,
+                    x=x,
+                    y=y,
+                    width=12,
+                    height=8,
+                    part_label=part_label,
+                    source_measure=measure,
+                    event_obj=el,
+                    pitch_obj=p,
+                    measure_num=measure.number,
+                    beat=float(el.offset),
+                    duration_ql=duration_ql,
+                    pitch_text=pitch_text,
                 )
                 self.scene.addItem(note_item)
                 self.note_items.append(note_item)
@@ -706,7 +768,129 @@ class OctaveEditorDialog(QDialog):
                 self.scene.addItem(stem)
 
     def _selected_note_items(self) -> List["OctaveEditorDialog.StaffNoteItem"]:
-        return [item for item in self.note_items if item.isSelected()]
+        selected = [item for item in self.note_items if item.isSelected()]
+        unique = []
+        seen = set()
+        for item in selected:
+            key = (id(item.event_obj), id(item.pitch_obj), item.measure_num, round(item.beat, 6))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        return unique
+
+    def _copy_event_metadata(self, source_event: Any, dest_event: Any, fallback_duration: float) -> None:
+        try:
+            dest_event.duration = copy.deepcopy(source_event.duration)
+        except Exception:
+            dest_event.duration.quarterLength = fallback_duration
+        if hasattr(source_event, "tie") and getattr(source_event, "tie", None) is not None:
+            try:
+                dest_event.tie = copy.deepcopy(source_event.tie)
+            except Exception:
+                pass
+        try:
+            dest_event.articulations = [copy.deepcopy(a) for a in getattr(source_event, "articulations", [])]
+        except Exception:
+            pass
+        try:
+            dest_event.expressions = [copy.deepcopy(e) for e in getattr(source_event, "expressions", [])]
+        except Exception:
+            pass
+
+    def _get_or_create_measure(
+        self,
+        part: stream.Part,
+        measure_num: int,
+        source_measure: Optional[stream.Measure] = None,
+    ) -> stream.Measure:
+        for measure in part.getElementsByClass(stream.Measure):
+            if measure.number == measure_num:
+                return measure
+
+        new_measure = stream.Measure(number=measure_num)
+        if source_measure is not None:
+            for ts in source_measure.getElementsByClass("TimeSignature"):
+                new_measure.insert(ts.offset, copy.deepcopy(ts))
+            for ks in source_measure.getElementsByClass("KeySignature"):
+                new_measure.insert(ks.offset, copy.deepcopy(ks))
+        part.append(new_measure)
+        return new_measure
+
+    def _event_at_offset(self, measure: stream.Measure, offset: float) -> Optional[Any]:
+        for el in measure.notesAndRests:
+            if not isinstance(el, (note.Note, chord.Chord)):
+                continue
+            if abs(float(el.offset) - offset) <= 1e-4:
+                return el
+        return None
+
+    def _insert_selected_pitch(self, item: "OctaveEditorDialog.StaffNoteItem", dest_part: stream.Part) -> bool:
+        pitch_midi = int(item.pitch_obj.midi)
+        dest_measure = self._get_or_create_measure(dest_part, item.measure_num, item.source_measure)
+        existing = self._event_at_offset(dest_measure, item.beat)
+
+        if isinstance(existing, note.Note):
+            if existing.pitch.midi == pitch_midi:
+                return False
+            new_chord = chord.Chord([copy.deepcopy(existing.pitch), copy.deepcopy(item.pitch_obj)])
+            self._copy_event_metadata(existing, new_chord, item.duration_ql)
+            dest_measure.remove(existing)
+            dest_measure.insert(item.beat, new_chord)
+            return True
+
+        if isinstance(existing, chord.Chord):
+            existing_midis = [p.midi for p in existing.pitches]
+            if pitch_midi in existing_midis:
+                return False
+            new_pitches = [copy.deepcopy(p) for p in existing.pitches] + [copy.deepcopy(item.pitch_obj)]
+            new_chord = chord.Chord(new_pitches)
+            self._copy_event_metadata(existing, new_chord, item.duration_ql)
+            dest_measure.remove(existing)
+            dest_measure.insert(item.beat, new_chord)
+            return True
+
+        new_note = note.Note(copy.deepcopy(item.pitch_obj))
+        self._copy_event_metadata(item.event_obj, new_note, item.duration_ql)
+        dest_measure.insert(item.beat, new_note)
+        return True
+
+    def _remove_pitch_group(
+        self,
+        source_measure: stream.Measure,
+        source_event: Any,
+        offset: float,
+        midi_values: set,
+    ) -> int:
+        event = source_event
+        if event not in source_measure.notesAndRests:
+            event = self._event_at_offset(source_measure, offset)
+            if event is None:
+                return 0
+
+        if isinstance(event, note.Note):
+            if event.pitch.midi in midi_values:
+                source_measure.remove(event)
+                return 1
+            return 0
+
+        if isinstance(event, chord.Chord):
+            old_pitches = list(event.pitches)
+            remaining = [copy.deepcopy(p) for p in old_pitches if p.midi not in midi_values]
+            removed = len(old_pitches) - len(remaining)
+            if removed <= 0:
+                return 0
+            source_measure.remove(event)
+            if len(remaining) == 1:
+                new_note = note.Note(remaining[0])
+                self._copy_event_metadata(event, new_note, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(offset, new_note)
+            elif len(remaining) > 1:
+                new_chord = chord.Chord(remaining)
+                self._copy_event_metadata(event, new_chord, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(offset, new_chord)
+            return removed
+        return 0
 
     def _shift_selected(self, semitones: int) -> None:
         items = self._selected_note_items()
@@ -714,22 +898,16 @@ class OctaveEditorDialog(QDialog):
             QMessageBox.information(self, "No Selection", "Select one or more notes first.")
             return
         changed = 0
-        seen_events = set()
+        seen_pitches = set()
         for item in items:
-            el = item.event_obj
-            key = id(el)
-            if key in seen_events:
+            key = id(item.pitch_obj)
+            if key in seen_pitches:
                 continue
-            seen_events.add(key)
-            if hasattr(el, "pitches"):
-                for p in el.pitches:
-                    p.midi += semitones
-                changed += 1
-            elif hasattr(el, "pitch"):
-                el.pitch.midi += semitones
-                changed += 1
+            seen_pitches.add(key)
+            item.pitch_obj.midi = max(0, min(127, item.pitch_obj.midi + semitones))
+            changed += 1
         action = "+8va" if semitones > 0 else "-8va"
-        self._log(f"{action} applied to {changed} selected note event(s)")
+        self._log(f"{action} applied to {changed} selected note(s)")
         self._refresh_note_list()
 
     def _raise_selected(self) -> None:
@@ -737,6 +915,84 @@ class OctaveEditorDialog(QDialog):
 
     def _lower_selected(self) -> None:
         self._shift_selected(-12)
+
+    def _transfer_selected(self, move: bool) -> None:
+        items = self._selected_note_items()
+        if not items:
+            QMessageBox.information(self, "No Selection", "Select one or more notes first.")
+            return
+        source_label = self.part_combo.currentText()
+        dest_label = self.target_part_combo.currentText()
+        if not dest_label:
+            QMessageBox.information(self, "No Destination", "Select a destination part for voicing changes.")
+            return
+        if source_label == dest_label:
+            QMessageBox.warning(self, "Invalid Destination", "Choose a different destination part.")
+            return
+
+        dest_part = self.part_map.get(dest_label)
+        if dest_part is None:
+            QMessageBox.warning(self, "Invalid Destination", "Could not resolve destination part.")
+            return
+
+        inserted = 0
+        grouped_for_removal: Dict[int, Dict[str, Any]] = {}
+        for item in items:
+            if self._insert_selected_pitch(item, dest_part):
+                inserted += 1
+                if move:
+                    key = id(item.event_obj)
+                    group = grouped_for_removal.setdefault(
+                        key,
+                        {
+                            "measure": item.source_measure,
+                            "event": item.event_obj,
+                            "offset": item.beat,
+                            "midis": set(),
+                        },
+                    )
+                    group["midis"].add(int(item.pitch_obj.midi))
+
+        removed = 0
+        if move:
+            for group in grouped_for_removal.values():
+                removed += self._remove_pitch_group(
+                    source_measure=group["measure"],
+                    source_event=group["event"],
+                    offset=group["offset"],
+                    midi_values=group["midis"],
+                )
+
+        action = "Moved" if move else "Copied"
+        self._log(f"{action} {inserted} selected note(s) from '{source_label}' to '{dest_label}'")
+        if move:
+            self._log(f"Removed {removed} source note(s) from '{source_label}'")
+        self._refresh_note_list()
+
+    def _delete_selected(self) -> None:
+        items = self._selected_note_items()
+        if not items:
+            QMessageBox.information(self, "No Selection", "Select one or more notes first.")
+            return
+        grouped: Dict[int, Dict[str, Any]] = {}
+        for item in items:
+            key = id(item.event_obj)
+            group = grouped.setdefault(
+                key,
+                {"measure": item.source_measure, "event": item.event_obj, "offset": item.beat, "midis": set()},
+            )
+            group["midis"].add(int(item.pitch_obj.midi))
+
+        removed = 0
+        for group in grouped.values():
+            removed += self._remove_pitch_group(
+                source_measure=group["measure"],
+                source_event=group["event"],
+                offset=group["offset"],
+                midi_values=group["midis"],
+            )
+        self._log(f"Deleted {removed} selected note(s)")
+        self._refresh_note_list()
 
     def _select_visible(self) -> None:
         for item in self.note_items:
@@ -755,7 +1011,7 @@ class OctaveEditorDialog(QDialog):
             self.selection_label.setText("No notes selected")
             return
         preview = ", ".join(
-            f"M{item.measure_num} beat {item.beat:.2f} {item.pitch_text}"
+            f"M{item.measure_num} beat {item.beat:.2f} {item.pitch_obj.nameWithOctave}"
             for item in selected[:6]
         )
         if len(selected) > 6:
@@ -1023,7 +1279,7 @@ class ScoreArranger(QMainWindow):
         self.open_editor_btn.clicked.connect(self.open_existing_for_editor)
         export_row.addWidget(self.open_editor_btn)
 
-        self.editor_btn = QPushButton("8va Editor...")
+        self.editor_btn = QPushButton("Visual Editor...")
         self.editor_btn.setEnabled(False)
         self.editor_btn.setStyleSheet("background-color: #6A1B9A; color: white; border: none; padding: 8px 16px; border-radius: 5px; font-size: 12px; font-weight: bold;")
         self.editor_btn.clicked.connect(self.open_octave_editor)
@@ -1268,7 +1524,7 @@ class ScoreArranger(QMainWindow):
             dlg = OctaveEditorDialog(self.last_output_path, self)
             dlg.exec_()
         except Exception as e:
-            QMessageBox.critical(self, "Editor Error", f"Could not open 8va editor:\n\n{e}")
+            QMessageBox.critical(self, "Editor Error", f"Could not open visual editor:\n\n{e}")
 
     def open_existing_for_editor(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
