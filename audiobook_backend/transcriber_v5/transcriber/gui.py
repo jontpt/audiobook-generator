@@ -10,7 +10,7 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -460,9 +460,17 @@ class OctaveEditorDialog(QDialog):
         self.musicxml_path = musicxml_path
         self.score: Optional[stream.Score] = None
         self.part_map: Dict[str, stream.Part] = {}
+        self.active_part_label: str = ""
+        self._selection_by_part: Dict[str, Set[Tuple[int, float, int]]] = {}
+        self._suspend_selection_updates = False
+        self.undo_stack: List[Dict[str, Any]] = []
+        self.redo_stack: List[Dict[str, Any]] = []
+        self.max_history = 50
         self.note_items: List[OctaveEditorDialog.StaffNoteItem] = []
         self.copy_btn: Optional[QPushButton] = None
         self.move_btn: Optional[QPushButton] = None
+        self.undo_btn: Optional[QPushButton] = None
+        self.redo_btn: Optional[QPushButton] = None
         self.setWindowTitle("Visual Octave + Voicing Editor")
         self.setModal(True)
         self.resize(1180, 790)
@@ -479,7 +487,8 @@ class OctaveEditorDialog(QDialog):
 
         hint = QLabel(
             "Select notes directly on the staff. Use +8va/-8va for octave edits, "
-            "or move/copy selected notes to another part for voicing corrections."
+            "or move/copy selected notes to another part for voicing corrections. "
+            "Rubber-band phrase selections persist while you keep editing."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #555; font-size: 11px;")
@@ -562,6 +571,16 @@ class OctaveEditorDialog(QDialog):
         refresh_btn.clicked.connect(self._refresh_note_list)
         btn_row.addWidget(refresh_btn)
 
+        self.undo_btn = QPushButton("Undo")
+        self.undo_btn.setStyleSheet("background-color: #3949AB; color: white; padding: 8px 16px;")
+        self.undo_btn.clicked.connect(self._undo)
+        btn_row.addWidget(self.undo_btn)
+
+        self.redo_btn = QPushButton("Redo")
+        self.redo_btn.setStyleSheet("background-color: #5C6BC0; color: white; padding: 8px 16px;")
+        self.redo_btn.clicked.connect(self._redo)
+        btn_row.addWidget(self.redo_btn)
+
         btn_row.addStretch()
 
         save_btn = QPushButton("Save")
@@ -576,15 +595,119 @@ class OctaveEditorDialog(QDialog):
 
         layout.addLayout(btn_row)
         self.setLayout(layout)
+        self._update_history_buttons()
 
     def _log(self, text: str) -> None:
         self.status_box.appendPlainText(text)
 
-    def _load_score(self) -> None:
-        self.score = converter.parse(self.musicxml_path)
+    def _note_item_key(self, item: "OctaveEditorDialog.StaffNoteItem") -> Tuple[int, float, int]:
+        return (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
+
+    def _capture_selection(self, part_label: Optional[str] = None) -> None:
+        label = part_label or self.part_combo.currentText()
+        if not label:
+            return
+        keys = {self._note_item_key(item) for item in self.note_items if item.isSelected()}
+        self._selection_by_part[label] = keys
+
+    def _restore_selection(self, part_label: str) -> None:
+        saved = self._selection_by_part.get(part_label, set())
+        if not saved:
+            return
+        self._suspend_selection_updates = True
+        self.scene.blockSignals(True)
+        try:
+            for item in self.note_items:
+                item.setSelected(self._note_item_key(item) in saved)
+        finally:
+            self.scene.blockSignals(False)
+            self._suspend_selection_updates = False
+
+    def _snapshot_state(self, action: str) -> Dict[str, Any]:
+        if self.score is None:
+            return {}
+        self._capture_selection(self.part_combo.currentText())
+        return {
+            "action": action,
+            "score": copy.deepcopy(self.score),
+            "selection": copy.deepcopy(self._selection_by_part),
+            "active_part": self.part_combo.currentText(),
+            "target_part": self.target_part_combo.currentText(),
+            "measure_filter": self.measure_edit.text(),
+        }
+
+    def _push_undo_snapshot(self, action: str) -> None:
+        snap = self._snapshot_state(action)
+        if not snap:
+            return
+        self.undo_stack.append(snap)
+        if len(self.undo_stack) > self.max_history:
+            self.undo_stack = self.undo_stack[-self.max_history:]
+        self.redo_stack.clear()
+        self._update_history_buttons()
+
+    def _update_history_buttons(self) -> None:
+        if self.undo_btn is not None:
+            self.undo_btn.setEnabled(bool(self.undo_stack))
+        if self.redo_btn is not None:
+            self.redo_btn.setEnabled(bool(self.redo_stack))
+
+    def _restore_snapshot(self, snap: Dict[str, Any]) -> None:
+        if not snap:
+            return
+        restored_score = snap.get("score")
+        if restored_score is None:
+            return
+        self.score = copy.deepcopy(restored_score)
+        self._selection_by_part = copy.deepcopy(snap.get("selection", {}))
+        preferred_part = snap.get("active_part", "")
+        preferred_target = snap.get("target_part", "")
+        measure_filter = snap.get("measure_filter", "")
+        self._populate_part_controls(preferred_current=preferred_part, preferred_target=preferred_target)
+        self.measure_edit.blockSignals(True)
+        self.measure_edit.setText(measure_filter)
+        self.measure_edit.blockSignals(False)
+        self._refresh_note_list()
+
+    def _undo(self) -> None:
+        if not self.undo_stack:
+            return
+        current = self._snapshot_state("redo")
+        snap = self.undo_stack.pop()
+        if current:
+            self.redo_stack.append(current)
+            if len(self.redo_stack) > self.max_history:
+                self.redo_stack = self.redo_stack[-self.max_history:]
+        self._restore_snapshot(snap)
+        self._log(f"Undo: {snap.get('action', 'edit')}")
+        self._update_history_buttons()
+
+    def _redo(self) -> None:
+        if not self.redo_stack:
+            return
+        current = self._snapshot_state("undo")
+        snap = self.redo_stack.pop()
+        if current:
+            self.undo_stack.append(current)
+            if len(self.undo_stack) > self.max_history:
+                self.undo_stack = self.undo_stack[-self.max_history:]
+        self._restore_snapshot(snap)
+        self._log(f"Redo: {snap.get('action', 'edit')}")
+        self._update_history_buttons()
+
+    def _populate_part_controls(
+        self,
+        preferred_current: Optional[str] = None,
+        preferred_target: Optional[str] = None,
+    ) -> None:
         self.part_map = {}
         self.part_combo.blockSignals(True)
         self.part_combo.clear()
+        if self.score is None:
+            self.part_combo.blockSignals(False)
+            self.target_part_combo.clear()
+            self.active_part_label = ""
+            return
         for i, part in enumerate(self.score.parts):
             base_label = part.partName or f"Part {i + 1}"
             label = base_label
@@ -594,12 +717,28 @@ class OctaveEditorDialog(QDialog):
                 suffix += 1
             self.part_map[label] = part
             self.part_combo.addItem(label)
+        if preferred_current and preferred_current in self.part_map:
+            self.part_combo.setCurrentText(preferred_current)
+        elif self.part_combo.count() > 0:
+            self.part_combo.setCurrentIndex(0)
         self.part_combo.blockSignals(False)
+        self.active_part_label = self.part_combo.currentText()
         self._refresh_target_parts()
+        if preferred_target:
+            idx = self.target_part_combo.findText(preferred_target)
+            if idx >= 0:
+                self.target_part_combo.setCurrentIndex(idx)
+
+    def _load_score(self) -> None:
+        self.score = converter.parse(self.musicxml_path)
+        self._populate_part_controls()
         self._log(f"Loaded: {Path(self.musicxml_path).name}")
         self._refresh_note_list()
 
     def _on_part_changed(self) -> None:
+        if self.active_part_label:
+            self._capture_selection(self.active_part_label)
+        self.active_part_label = self.part_combo.currentText()
         self._refresh_target_parts()
         self._refresh_note_list()
 
@@ -641,9 +780,12 @@ class OctaveEditorDialog(QDialog):
         return result
 
     def _refresh_note_list(self) -> None:
+        if self.active_part_label and self.note_items:
+            self._capture_selection(self.active_part_label)
         self.scene.clear()
         self.note_items = []
         part_label = self.part_combo.currentText()
+        self.active_part_label = part_label
         part = self.part_map.get(part_label)
         if not part:
             return
@@ -693,6 +835,7 @@ class OctaveEditorDialog(QDialog):
 
         rows = (len(measures) + measures_per_row - 1) // measures_per_row
         self.scene.setSceneRect(0, 0, measures_per_row * measure_width, rows * measure_height)
+        self._restore_selection(part_label)
         self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} selectable note(s)")
         self._update_selection_summary()
 
@@ -897,6 +1040,8 @@ class OctaveEditorDialog(QDialog):
         if not items:
             QMessageBox.information(self, "No Selection", "Select one or more notes first.")
             return
+        action = "+8va" if semitones > 0 else "-8va"
+        self._push_undo_snapshot(action)
         changed = 0
         seen_pitches = set()
         for item in items:
@@ -906,7 +1051,8 @@ class OctaveEditorDialog(QDialog):
             seen_pitches.add(key)
             item.pitch_obj.midi = max(0, min(127, item.pitch_obj.midi + semitones))
             changed += 1
-        action = "+8va" if semitones > 0 else "-8va"
+        current = self.part_combo.currentText()
+        self._selection_by_part[current] = {self._note_item_key(item) for item in items}
         self._log(f"{action} applied to {changed} selected note(s)")
         self._refresh_note_list()
 
@@ -934,6 +1080,7 @@ class OctaveEditorDialog(QDialog):
         if dest_part is None:
             QMessageBox.warning(self, "Invalid Destination", "Could not resolve destination part.")
             return
+        self._push_undo_snapshot(f"{'Move' if move else 'Copy'} to {dest_label}")
 
         inserted = 0
         grouped_for_removal: Dict[int, Dict[str, Any]] = {}
@@ -967,6 +1114,15 @@ class OctaveEditorDialog(QDialog):
         self._log(f"{action} {inserted} selected note(s) from '{source_label}' to '{dest_label}'")
         if move:
             self._log(f"Removed {removed} source note(s) from '{source_label}'")
+            self._selection_by_part[source_label] = set()
+        else:
+            self._selection_by_part[source_label] = {self._note_item_key(item) for item in items}
+        moved_keys = {
+            (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
+            for item in items
+        }
+        existing_dest = set(self._selection_by_part.get(dest_label, set()))
+        self._selection_by_part[dest_label] = existing_dest | moved_keys
         self._refresh_note_list()
 
     def _delete_selected(self) -> None:
@@ -974,6 +1130,7 @@ class OctaveEditorDialog(QDialog):
         if not items:
             QMessageBox.information(self, "No Selection", "Select one or more notes first.")
             return
+        self._push_undo_snapshot("Delete selected notes")
         grouped: Dict[int, Dict[str, Any]] = {}
         for item in items:
             key = id(item.event_obj)
@@ -991,6 +1148,8 @@ class OctaveEditorDialog(QDialog):
                 offset=group["offset"],
                 midi_values=group["midis"],
             )
+        current = self.part_combo.currentText()
+        self._selection_by_part[current] = set()
         self._log(f"Deleted {removed} selected note(s)")
         self._refresh_note_list()
 
@@ -1004,7 +1163,12 @@ class OctaveEditorDialog(QDialog):
         self._update_selection_summary()
 
     def _update_selection_summary(self) -> None:
+        if self._suspend_selection_updates:
+            return
         selected = self._selected_note_items()
+        current = self.part_combo.currentText()
+        if current:
+            self._selection_by_part[current] = {self._note_item_key(item) for item in selected}
         for item in self.note_items:
             item._apply_style(item.isSelected())
         if not selected:
