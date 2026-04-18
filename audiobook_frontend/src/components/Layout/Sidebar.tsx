@@ -1,15 +1,15 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  Headphones, LayoutDashboard, Upload, Users,
-  Settings, LogOut, Key, ChevronRight,
+  Headphones, LayoutDashboard, Upload,
+  Settings, LogOut, ChevronRight, ClipboardList,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/upload',     icon: Upload,          label: 'New Audiobook' },
+  { to: '/workflow',   icon: ClipboardList,   label: 'Workflow Hub' },
   { to: '/settings',   icon: Settings,        label: 'Settings' },
 ];
 

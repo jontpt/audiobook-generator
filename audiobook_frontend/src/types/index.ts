@@ -21,11 +21,35 @@ export interface User {
 
 export interface ApiKey {
   id: string;
-  service: string;        // 'elevenlabs' | 'mubert' | 'soundraw'
+  service: string;        // 'elevenlabs' | 'mubert' | 'soundraw' | 'jamendo'
   label: string;
   key_preview: string;    // "sk-...ab12"
   is_valid: boolean | null;
   created_at: string;
+}
+
+export interface SfxLibraryInventory {
+  success: boolean;
+  root: string;
+  total_files: number;
+  categories: Record<string, { count: number; files: string[] }>;
+}
+
+export interface SfxLibraryUploadResult {
+  success: boolean;
+  message: string;
+  import_report: {
+    imported_count: number;
+    imported_by_category: Record<string, number>;
+    skipped_non_audio: number;
+    skipped_too_large: number;
+    skipped_bad_entries: number;
+  };
+  inventory: {
+    root: string;
+    total_files: number;
+    categories: Record<string, { count: number; files: string[] }>;
+  };
 }
 
 export interface VoiceInfo {
@@ -75,10 +99,24 @@ export interface TextSegment {
   duration_ms?: number;
 }
 
+export type MusicProvider = 'auto' | 'mubert' | 'soundraw' | 'jamendo';
+export type MusicStylePreset =
+  | 'auto'
+  | 'cinematic'
+  | 'ambient'
+  | 'orchestral'
+  | 'piano'
+  | 'electronic';
+
 export interface Book {
   id: string;
   title: string;
   author: string;
+  status_reason?: string;
+  draft_characters?: Character[];
+  character_voice_candidates?: Record<string, string[]>;
+  radio_cues?: RadioCue[];
+  radio_cue_counts?: Record<string, number>;
   file_type?: string;
   status: ProcessingStatus;
   progress: number;
@@ -88,10 +126,96 @@ export interface Book {
   segment_count: number;
   total_words: number;
   export_path?: string;
+  parent_book_id?: string | null;
+  root_book_id?: string | null;
+  revision_number?: number;
   created_at: string;
   updated_at: string;
   characters?: Character[];
   chapters?: Chapter[];
+  revisions?: BookRevisionSummary[];
+}
+
+export interface BookRevisionSummary {
+  id: string;
+  title: string;
+  author: string;
+  status: ProcessingStatus;
+  progress: number;
+  revision_number: number;
+  parent_book_id?: string | null;
+  root_book_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookRevisionCreateResponse {
+  success: boolean;
+  message: string;
+  book_id: string;
+  root_book_id: string;
+  source_revision_id?: string | null;
+  parent_book_id?: string | null;
+  revision_number: number;
+  title: string;
+  ws_url: string;
+}
+
+export interface BookRevisionDiffMetric {
+  base: number;
+  compare: number;
+  delta: number;
+}
+
+export interface BookRevisionDiffResponse {
+  success: boolean;
+  root_book_id: string;
+  base: BookRevisionSummary;
+  compare: BookRevisionSummary;
+  diff: {
+    metrics: Record<string, BookRevisionDiffMetric>;
+    settings_changes: Array<{
+      field: string;
+      label: string;
+      base: string;
+      compare: string;
+    }>;
+    voice_plan: {
+      base_count: number;
+      compare_count: number;
+      added_characters: string[];
+      removed_characters: string[];
+      changed_voices: Array<{
+        character: string;
+        base_voice_id: string;
+        compare_voice_id: string;
+      }>;
+    };
+    cue_counts: {
+      base: Record<string, number>;
+      compare: Record<string, number>;
+      delta: Record<string, number>;
+    };
+    has_changes: boolean;
+  };
+}
+
+export interface RadioCue {
+  type: 'scene' | 'ambience' | 'foley' | 'music';
+  value: string;
+  label: string;
+  params: Record<string, string>;
+  chapter_index: number;
+  paragraph_index: number;
+}
+
+export interface RadioCueLintIssue {
+  severity: 'error' | 'warning';
+  code: string;
+  message: string;
+  hint: string;
+  chapter_index: number;
+  paragraph_index: number;
 }
 
 export interface ExportStatus {

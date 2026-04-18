@@ -14,6 +14,7 @@ import { UploadPage }          from './pages/UploadPage';
 import { BookDetailPage }      from './pages/BookDetailPage';
 import { CharacterStudioPage } from './pages/CharacterStudioPage';
 import { SettingsPage }        from './pages/SettingsPage';
+import { WorkflowHubPage }     from './pages/WorkflowHubPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,6 +57,7 @@ export default function App() {
                 <Route index                             element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard"                 element={<DashboardPage />} />
                 <Route path="/upload"                    element={<UploadPage />} />
+                <Route path="/workflow"                  element={<WorkflowHubPage />} />
                 <Route path="/books/:id"                 element={<BookDetailPage />} />
                 <Route path="/books/:id/characters"      element={<CharacterStudioPage />} />
                 <Route path="/settings"                  element={<SettingsPage />} />

@@ -93,6 +93,7 @@ class TextSegment(BaseModel):
     speaker: Optional[str] = None     # Character name for dialogue
     text: str
     emotion: EmotionTag = EmotionTag.NEUTRAL
+    performance: dict[str, str] = Field(default_factory=dict)
     audio_path: Optional[str] = None  # Path to generated audio file
     duration_ms: Optional[int] = None
 
@@ -123,6 +124,7 @@ class BookCreate(BaseModel):
 
 class Book(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = None
     title: str = "Untitled Book"
     author: str = "Unknown Author"
     file_path: Optional[str] = None
@@ -135,6 +137,14 @@ class Book(BaseModel):
     character_count: int = 0
     segment_count: int = 0
     total_words: int = 0
+    music_provider_preference: str = "auto"
+    music_style_preset: str = "auto"
+    character_voice_plan: dict[str, str] = Field(default_factory=dict)
+    radio_cues: list[dict] = Field(default_factory=list)
+    radio_cue_counts: dict[str, int] = Field(default_factory=dict)
+    parent_book_id: Optional[str] = None
+    root_book_id: Optional[str] = None
+    revision_number: int = 1
 
     export_path: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -174,6 +184,9 @@ class ProcessingOptions(BaseModel):
     export_format: ExportFormat = ExportFormat.MP3
     speech_rate: float = 1.0          # 0.7 – 1.3
     music_volume_db: float = -18.0
+    music_type: str = "auto"          # auto | mubert | soundraw | jamendo
+    music_style: str = "auto"         # auto | ambient | cinematic | orchestral | piano | electronic
+    character_voice_overrides: dict[str, str] = Field(default_factory=dict)
     include_sfx: bool = False
 
 

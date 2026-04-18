@@ -8,6 +8,10 @@ import { BookCard } from '../components/Books/BookCard';
 import { Button } from '../components/UI/Button';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import packageJson from '../../package.json';
+
+const UI_VERSION = String(packageJson.version || 'unknown');
+const UI_REVISION = String(import.meta.env.VITE_APP_REVISION || 'local');
 
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: string | number; color: string }> =
   ({ icon, label, value, color }) => (
@@ -31,6 +35,17 @@ export const DashboardPage: React.FC = () => {
       );
       return hasProcessing ? 3000 : false;
     },
+  });
+
+  const { data: health } = useQuery({
+    queryKey: ['health-version'],
+    queryFn: async () => {
+      const res = await fetch('/health');
+      if (!res.ok) throw new Error('Health check failed');
+      return res.json() as Promise<{ version?: string }>;
+    },
+    staleTime: 60_000,
+    retry: 0,
   });
 
   const handleDelete = async (id: string) => {
@@ -58,6 +73,9 @@ export const DashboardPage: React.FC = () => {
             Welcome back, <span className="text-brand-400">{user?.username}</span> 👋
           </h1>
           <p className="text-dark-400 mt-1">Your audiobook studio</p>
+          <p className="text-xs text-dark-500 mt-1 font-mono">
+            API v{health?.version ?? '—'} · UI v{UI_VERSION} · rev {UI_REVISION}
+          </p>
         </div>
         <Link to="/upload">
           <Button variant="primary" icon={<Plus size={16} />}>New Audiobook</Button>
