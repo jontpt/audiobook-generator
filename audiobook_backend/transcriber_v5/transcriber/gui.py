@@ -9,8 +9,9 @@ import copy
 import re
 import shutil
 import tempfile
+import traceback
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -45,7 +46,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from music21 import converter, instrument, stream
+from music21 import chord, converter, instrument, note, stream
 
 from .constants import (
     DEFAULT_TITLE_FONT_SIZE,
@@ -406,10 +407,10 @@ class AudiverisSetupDialog(QDialog):
 
 
 class OctaveEditorDialog(QDialog):
-    """Visual note editor for applying one-click octave fixes on a staff view."""
+    """Visual note editor for octave and cross-part voicing fixes."""
 
     class StaffNoteItem(QGraphicsEllipseItem):
-        """Clickable notehead tied to a music21 note or chord event."""
+        """Clickable notehead bound to an editable score event/pitch."""
 
         def __init__(
             self,
@@ -417,15 +418,23 @@ class OctaveEditorDialog(QDialog):
             y: float,
             width: float,
             height: float,
+            part_label: str,
+            source_measure: stream.Measure,
             event_obj: Any,
+            pitch_obj: Any,
             measure_num: int,
             beat: float,
+            duration_ql: float,
             pitch_text: str,
         ) -> None:
             super().__init__(x, y, width, height)
+            self.part_label = part_label
+            self.source_measure = source_measure
             self.event_obj = event_obj
+            self.pitch_obj = pitch_obj
             self.measure_num = measure_num
             self.beat = beat
+            self.duration_ql = duration_ql
             self.pitch_text = pitch_text
             self.setFlag(QGraphicsItem.ItemIsSelectable, True)
             self.setFlag(QGraphicsItem.ItemIsFocusable, True)
@@ -452,10 +461,20 @@ class OctaveEditorDialog(QDialog):
         self.musicxml_path = musicxml_path
         self.score: Optional[stream.Score] = None
         self.part_map: Dict[str, stream.Part] = {}
+        self.active_part_label: str = ""
+        self._selection_by_part: Dict[str, Set[Tuple[int, float, int]]] = {}
+        self._suspend_selection_updates = False
+        self.undo_stack: List[Dict[str, Any]] = []
+        self.redo_stack: List[Dict[str, Any]] = []
+        self.max_history = 50
         self.note_items: List[OctaveEditorDialog.StaffNoteItem] = []
-        self.setWindowTitle("8va Editor")
+        self.copy_btn: Optional[QPushButton] = None
+        self.move_btn: Optional[QPushButton] = None
+        self.undo_btn: Optional[QPushButton] = None
+        self.redo_btn: Optional[QPushButton] = None
+        self.setWindowTitle("Visual Octave + Voicing Editor")
         self.setModal(True)
-        self.resize(1100, 760)
+        self.resize(1180, 790)
         self._init_ui()
         self._load_score()
 
@@ -463,20 +482,27 @@ class OctaveEditorDialog(QDialog):
         layout = QVBoxLayout()
         layout.setSpacing(10)
 
-        title = QLabel("8va Editor")
+        title = QLabel("Visual Octave + Voicing Editor")
         title.setStyleSheet("font-size: 15px; font-weight: bold; color: #2196F3;")
         layout.addWidget(title)
 
-        hint = QLabel("Choose a part, optionally narrow the measure range, select notes, then click +8va.")
+        hint = QLabel(
+            "Select notes directly on the staff. Use +8va/-8va for octave edits, "
+            "or move/copy selected notes to another part for voicing corrections. "
+            "Rubber-band phrase selections persist while you keep editing."
+        )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #555; font-size: 11px;")
         layout.addWidget(hint)
 
         top_row = QHBoxLayout()
-        top_row.addWidget(QLabel("Part:"))
+        top_row.addWidget(QLabel("Edit Part:"))
         self.part_combo = QComboBox()
-        self.part_combo.currentTextChanged.connect(self._refresh_note_list)
+        self.part_combo.currentTextChanged.connect(self._on_part_changed)
         top_row.addWidget(self.part_combo, 2)
+        top_row.addWidget(QLabel("Move/Copy To:"))
+        self.target_part_combo = QComboBox()
+        top_row.addWidget(self.target_part_combo, 2)
         top_row.addWidget(QLabel("Measures:"))
         self.measure_edit = QLineEdit()
         self.measure_edit.setPlaceholderText("e.g. 21-23, 53, 80-83")
@@ -484,9 +510,8 @@ class OctaveEditorDialog(QDialog):
         top_row.addWidget(self.measure_edit, 3)
         layout.addLayout(top_row)
 
-        self.note_list = QListWidget()
         self.scene = QGraphicsScene(self)
-        self.scene.selectionChanged.connect(self._update_selection_summary)
+        self.scene.selectionChanged.connect(self._on_scene_selection_changed)
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHints(self.view.renderHints())
         self.view.setDragMode(QGraphicsView.RubberBandDrag)
@@ -507,15 +532,30 @@ class OctaveEditorDialog(QDialog):
         layout.addWidget(self.selection_label)
 
         btn_row = QHBoxLayout()
-        self.raise_btn = QPushButton("+8va Selected")
-        self.raise_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px 16px;")
-        self.raise_btn.clicked.connect(self._raise_selected)
-        btn_row.addWidget(self.raise_btn)
+        raise_btn = QPushButton("+8va Selected")
+        raise_btn.setStyleSheet("background-color: #2196F3; color: white; padding: 8px 16px;")
+        raise_btn.clicked.connect(self._raise_selected)
+        btn_row.addWidget(raise_btn)
 
         lower_btn = QPushButton("-8va Selected")
         lower_btn.setStyleSheet("background-color: #455A64; color: white; padding: 8px 16px;")
         lower_btn.clicked.connect(self._lower_selected)
         btn_row.addWidget(lower_btn)
+
+        self.copy_btn = QPushButton("Copy To Part")
+        self.copy_btn.setStyleSheet("background-color: #6A1B9A; color: white; padding: 8px 16px;")
+        self.copy_btn.clicked.connect(lambda: self._transfer_selected(move=False))
+        btn_row.addWidget(self.copy_btn)
+
+        self.move_btn = QPushButton("Move To Part")
+        self.move_btn.setStyleSheet("background-color: #8E24AA; color: white; padding: 8px 16px;")
+        self.move_btn.clicked.connect(lambda: self._transfer_selected(move=True))
+        btn_row.addWidget(self.move_btn)
+
+        delete_btn = QPushButton("Delete Selected")
+        delete_btn.setStyleSheet("background-color: #C62828; color: white; padding: 8px 16px;")
+        delete_btn.clicked.connect(self._delete_selected)
+        btn_row.addWidget(delete_btn)
 
         select_all_btn = QPushButton("Select Visible")
         select_all_btn.setStyleSheet("background-color: #546E7A; color: white; padding: 8px 16px;")
@@ -532,6 +572,16 @@ class OctaveEditorDialog(QDialog):
         refresh_btn.clicked.connect(self._refresh_note_list)
         btn_row.addWidget(refresh_btn)
 
+        self.undo_btn = QPushButton("Undo")
+        self.undo_btn.setStyleSheet("background-color: #3949AB; color: white; padding: 8px 16px;")
+        self.undo_btn.clicked.connect(self._undo)
+        btn_row.addWidget(self.undo_btn)
+
+        self.redo_btn = QPushButton("Redo")
+        self.redo_btn.setStyleSheet("background-color: #5C6BC0; color: white; padding: 8px 16px;")
+        self.redo_btn.clicked.connect(self._redo)
+        btn_row.addWidget(self.redo_btn)
+
         btn_row.addStretch()
 
         save_btn = QPushButton("Save")
@@ -546,22 +596,228 @@ class OctaveEditorDialog(QDialog):
 
         layout.addLayout(btn_row)
         self.setLayout(layout)
+        self._update_history_buttons()
 
     def _log(self, text: str) -> None:
         self.status_box.appendPlainText(text)
 
-    def _load_score(self) -> None:
-        self.score = converter.parse(self.musicxml_path)
+    def _log_exception(self, context: str, exc: Exception) -> None:
+        """Capture editor exceptions to disk for crash diagnosis."""
+        try:
+            log_path = Path(__file__).resolve().parents[1] / "editor_error.txt"
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write(f"[{context}] {exc}\n")
+                handle.write(traceback.format_exc())
+                handle.write("\n")
+        except Exception:
+            pass
+        self._log(f"{context} failed: {exc}")
+
+    def _on_scene_selection_changed(self) -> None:
+        """Guard selection updates from bubbling Qt RuntimeErrors."""
+        try:
+            self._update_selection_summary()
+        except Exception as exc:
+            self._log_exception("scene selectionChanged", exc)
+
+    def _note_item_key(self, item: "OctaveEditorDialog.StaffNoteItem") -> Tuple[int, float, int]:
+        return (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
+
+    def _capture_selection(self, part_label: Optional[str] = None) -> None:
+        label = part_label or self.part_combo.currentText()
+        if not label:
+            return
+        keys = {self._note_item_key(item) for item in self._selected_note_items()}
+        self._selection_by_part[label] = keys
+
+    def _restore_selection(self, part_label: str) -> None:
+        saved = self._selection_by_part.get(part_label, set())
+        if not saved:
+            return
+        self._suspend_selection_updates = True
+        self.scene.blockSignals(True)
+        try:
+            for item in self.note_items:
+                item.setSelected(self._note_item_key(item) in saved)
+        finally:
+            self.scene.blockSignals(False)
+            self._suspend_selection_updates = False
+
+    def _snapshot_state(self, action: str) -> Dict[str, Any]:
+        if self.score is None:
+            return {}
+        self._capture_selection(self.part_combo.currentText())
+        score_xml = self._serialize_score_to_xml()
+        if score_xml is None:
+            return {}
+        return {
+            "action": action,
+            "score_xml": score_xml,
+            "selection": copy.deepcopy(self._selection_by_part),
+            "active_part": self.part_combo.currentText(),
+            "target_part": self.target_part_combo.currentText(),
+            "measure_filter": self.measure_edit.text(),
+        }
+
+    def _push_undo_snapshot(self, action: str) -> None:
+        snap = self._snapshot_state(action)
+        if not snap:
+            return
+        self.undo_stack.append(snap)
+        if len(self.undo_stack) > self.max_history:
+            self.undo_stack = self.undo_stack[-self.max_history:]
+        self.redo_stack.clear()
+        self._update_history_buttons()
+
+    def _update_history_buttons(self) -> None:
+        if self.undo_btn is not None:
+            self.undo_btn.setEnabled(bool(self.undo_stack))
+        if self.redo_btn is not None:
+            self.redo_btn.setEnabled(bool(self.redo_stack))
+
+    def _serialize_score_to_xml(self) -> Optional[str]:
+        """Serialize current score to MusicXML text for undo/redo snapshots."""
+        if self.score is None:
+            return None
+        tmp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(prefix="utrans_editor_", suffix=".musicxml", delete=False) as tmp:
+                tmp_path = tmp.name
+            self.score.write("musicxml", fp=tmp_path)
+            with open(tmp_path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except Exception as e:
+            self._log(f"History snapshot failed: {e}")
+            return None
+        finally:
+            if tmp_path:
+                try:
+                    Path(tmp_path).unlink()
+                except Exception:
+                    pass
+
+    def _deserialize_score_from_xml(self, xml_text: str) -> Optional[stream.Score]:
+        """Deserialize MusicXML text back to a music21 score."""
+        try:
+            return converter.parseData(xml_text)
+        except Exception as e:
+            self._log(f"History restore failed: {e}")
+            return None
+
+    def _restore_snapshot(self, snap: Dict[str, Any]) -> None:
+        if not snap:
+            return
+        score_xml = snap.get("score_xml")
+        if not score_xml:
+            return
+        restored_score = self._deserialize_score_from_xml(score_xml)
+        if restored_score is None:
+            return
+        self.score = restored_score
+        self._selection_by_part = copy.deepcopy(snap.get("selection", {}))
+        preferred_part = snap.get("active_part", "")
+        preferred_target = snap.get("target_part", "")
+        measure_filter = snap.get("measure_filter", "")
+        self._populate_part_controls(preferred_current=preferred_part, preferred_target=preferred_target)
+        self.measure_edit.blockSignals(True)
+        self.measure_edit.setText(measure_filter)
+        self.measure_edit.blockSignals(False)
+        self._refresh_note_list()
+
+    def _undo(self) -> None:
+        if not self.undo_stack:
+            return
+        try:
+            current = self._snapshot_state("redo")
+            snap = self.undo_stack.pop()
+            if current:
+                self.redo_stack.append(current)
+                if len(self.redo_stack) > self.max_history:
+                    self.redo_stack = self.redo_stack[-self.max_history:]
+            self._restore_snapshot(snap)
+            self._log(f"Undo: {snap.get('action', 'edit')}")
+            self._update_history_buttons()
+        except Exception as e:
+            self._log(f"Undo failed: {e}")
+            self._update_history_buttons()
+
+    def _redo(self) -> None:
+        if not self.redo_stack:
+            return
+        try:
+            current = self._snapshot_state("undo")
+            snap = self.redo_stack.pop()
+            if current:
+                self.undo_stack.append(current)
+                if len(self.undo_stack) > self.max_history:
+                    self.undo_stack = self.undo_stack[-self.max_history:]
+            self._restore_snapshot(snap)
+            self._log(f"Redo: {snap.get('action', 'edit')}")
+            self._update_history_buttons()
+        except Exception as e:
+            self._log(f"Redo failed: {e}")
+            self._update_history_buttons()
+
+    def _populate_part_controls(
+        self,
+        preferred_current: Optional[str] = None,
+        preferred_target: Optional[str] = None,
+    ) -> None:
         self.part_map = {}
         self.part_combo.blockSignals(True)
         self.part_combo.clear()
+        if self.score is None:
+            self.part_combo.blockSignals(False)
+            self.target_part_combo.clear()
+            self.active_part_label = ""
+            return
         for i, part in enumerate(self.score.parts):
-            label = part.partName or f"Part {i + 1}"
+            base_label = part.partName or f"Part {i + 1}"
+            label = base_label
+            suffix = 2
+            while label in self.part_map:
+                label = f"{base_label} ({suffix})"
+                suffix += 1
             self.part_map[label] = part
             self.part_combo.addItem(label)
+        if preferred_current and preferred_current in self.part_map:
+            self.part_combo.setCurrentText(preferred_current)
+        elif self.part_combo.count() > 0:
+            self.part_combo.setCurrentIndex(0)
         self.part_combo.blockSignals(False)
+        self.active_part_label = self.part_combo.currentText()
+        self._refresh_target_parts()
+        if preferred_target:
+            idx = self.target_part_combo.findText(preferred_target)
+            if idx >= 0:
+                self.target_part_combo.setCurrentIndex(idx)
+
+    def _load_score(self) -> None:
+        self.score = converter.parse(self.musicxml_path)
+        self._populate_part_controls()
         self._log(f"Loaded: {Path(self.musicxml_path).name}")
         self._refresh_note_list()
+
+    def _on_part_changed(self) -> None:
+        if self.active_part_label:
+            self._capture_selection(self.active_part_label)
+        self.active_part_label = self.part_combo.currentText()
+        self._refresh_target_parts()
+        self._refresh_note_list()
+
+    def _refresh_target_parts(self) -> None:
+        current = self.part_combo.currentText()
+        self.target_part_combo.blockSignals(True)
+        self.target_part_combo.clear()
+        for label in self.part_map:
+            if label != current:
+                self.target_part_combo.addItem(label)
+        self.target_part_combo.blockSignals(False)
+        has_other = self.target_part_combo.count() > 0
+        if self.copy_btn is not None:
+            self.copy_btn.setEnabled(has_other)
+        if self.move_btn is not None:
+            self.move_btn.setEnabled(has_other)
 
     def _parse_measure_filter(self) -> Optional[set]:
         text = self.measure_edit.text().strip()
@@ -587,61 +843,77 @@ class OctaveEditorDialog(QDialog):
         return result
 
     def _refresh_note_list(self) -> None:
-        self.scene.clear()
-        self.note_items = []
-        part = self.part_map.get(self.part_combo.currentText())
-        if not part:
-            return
+        try:
+            if self.active_part_label and self.note_items:
+                self._capture_selection(self.active_part_label)
+            self._suspend_selection_updates = True
+            self.scene.blockSignals(True)
+            try:
+                self.scene.clear()
+            finally:
+                self.scene.blockSignals(False)
+                self._suspend_selection_updates = False
+            self.note_items = []
+            part_label = self.part_combo.currentText()
+            self.active_part_label = part_label
+            part = self.part_map.get(part_label)
+            if not part:
+                return
 
-        allowed_measures = self._parse_measure_filter()
-        measures = []
-        for measure in part.getElementsByClass(stream.Measure):
-            if allowed_measures is not None and measure.number not in allowed_measures:
-                continue
-            measures.append(measure)
+            allowed_measures = self._parse_measure_filter()
+            measures = []
+            for measure in part.getElementsByClass(stream.Measure):
+                if allowed_measures is not None and measure.number not in allowed_measures:
+                    continue
+                measures.append(measure)
 
-        if not measures:
-            self._log("No measures matched the current filter")
-            self.selection_label.setText("No notes selected")
-            return
+            if not measures:
+                self._log("No measures matched the current filter")
+                self.selection_label.setText("No notes selected")
+                return
 
-        part_midis = [
-            n.pitch.midi
-            for n in part.recurse().notes
-            if hasattr(n, "pitch")
-        ]
-        center_midi = int(sum(part_midis) / len(part_midis)) if part_midis else 67
+            part_midis = [
+                n.pitch.midi
+                for n in part.recurse().notes
+                if hasattr(n, "pitch")
+            ]
+            center_midi = int(sum(part_midis) / len(part_midis)) if part_midis else 67
 
-        measure_width = 220
-        measure_height = 170
-        measures_per_row = 4
-        x_margin = 28
-        y_margin = 24
-        self.scene.setBackgroundBrush(Qt.white)
+            measure_width = 220
+            measure_height = 170
+            measures_per_row = 4
+            x_margin = 28
+            y_margin = 24
+            self.scene.setBackgroundBrush(Qt.white)
 
-        for idx, measure in enumerate(measures):
-            col = idx % measures_per_row
-            row = idx // measures_per_row
-            origin_x = col * measure_width
-            origin_y = row * measure_height
-            self._draw_measure(
-                measure,
-                origin_x,
-                origin_y,
-                measure_width,
-                measure_height,
-                center_midi,
-                x_margin,
-                y_margin,
-            )
+            for idx, measure in enumerate(measures):
+                col = idx % measures_per_row
+                row = idx // measures_per_row
+                origin_x = col * measure_width
+                origin_y = row * measure_height
+                self._draw_measure(
+                    part_label=part_label,
+                    measure=measure,
+                    origin_x=origin_x,
+                    origin_y=origin_y,
+                    measure_width=measure_width,
+                    measure_height=measure_height,
+                    center_midi=center_midi,
+                    x_margin=x_margin,
+                    y_margin=y_margin,
+                )
 
-        rows = (len(measures) + measures_per_row - 1) // measures_per_row
-        self.scene.setSceneRect(0, 0, measures_per_row * measure_width, rows * measure_height)
-        self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} note event(s)")
-        self._update_selection_summary()
+            rows = (len(measures) + measures_per_row - 1) // measures_per_row
+            self.scene.setSceneRect(0, 0, measures_per_row * measure_width, rows * measure_height)
+            self._restore_selection(part_label)
+            self._log(f"Showing {len(measures)} measure(s), {len(self.note_items)} selectable note(s)")
+            self._update_selection_summary()
+        except Exception as exc:
+            self._log_exception("refresh note list", exc)
 
     def _draw_measure(
         self,
+        part_label: str,
         measure: stream.Measure,
         origin_x: float,
         origin_y: float,
@@ -678,26 +950,33 @@ class OctaveEditorDialog(QDialog):
 
         center_y = staff_top + 2 * staff_spacing
         for el in measure.notes:
-            if hasattr(el, "pitches"):
+            if isinstance(el, chord.Chord):
                 pitches = list(el.pitches)
-            else:
+            elif isinstance(el, note.Note):
                 pitches = [el.pitch]
+            else:
+                continue
             if not pitches:
                 continue
 
             x = staff_left + 8 + (float(el.offset) / bar_ql) * note_area_width
             pitch_text = ".".join(p.nameWithOctave for p in pitches)
+            duration_ql = float(getattr(el.duration, "quarterLength", 1.0) or 1.0)
             for p_idx, p in enumerate(sorted(pitches, key=lambda pitch: pitch.midi, reverse=True)):
                 y = center_y - (p.midi - center_midi) * 3.0 + p_idx * 3
                 note_item = self.StaffNoteItem(
-                    x,
-                    y,
-                    12,
-                    8,
-                    el,
-                    measure.number,
-                    float(el.offset),
-                    pitch_text,
+                    x=x,
+                    y=y,
+                    width=12,
+                    height=8,
+                    part_label=part_label,
+                    source_measure=measure,
+                    event_obj=el,
+                    pitch_obj=copy.deepcopy(p),
+                    measure_num=measure.number,
+                    beat=float(el.offset),
+                    duration_ql=duration_ql,
+                    pitch_text=pitch_text,
                 )
                 self.scene.addItem(note_item)
                 self.note_items.append(note_item)
@@ -706,31 +985,303 @@ class OctaveEditorDialog(QDialog):
                 self.scene.addItem(stem)
 
     def _selected_note_items(self) -> List["OctaveEditorDialog.StaffNoteItem"]:
-        return [item for item in self.note_items if item.isSelected()]
+        selected = []
+        for item in self.note_items:
+            try:
+                if item.scene() is not None and item.isSelected():
+                    selected.append(item)
+            except RuntimeError:
+                # Item may have been deleted during a scene refresh.
+                continue
+        unique = []
+        seen = set()
+        for item in selected:
+            try:
+                key = (
+                    item.measure_num,
+                    round(float(item.beat), 6),
+                    int(item.pitch_obj.midi),
+                    isinstance(item.event_obj, chord.Chord),
+                )
+            except RuntimeError:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(item)
+        return unique
+
+    def _copy_event_metadata(self, source_event: Any, dest_event: Any, fallback_duration: float) -> None:
+        try:
+            dest_event.duration = copy.deepcopy(source_event.duration)
+        except Exception:
+            dest_event.duration.quarterLength = fallback_duration
+        if hasattr(source_event, "tie") and getattr(source_event, "tie", None) is not None:
+            try:
+                dest_event.tie = copy.deepcopy(source_event.tie)
+            except Exception:
+                pass
+        try:
+            dest_event.articulations = [copy.deepcopy(a) for a in getattr(source_event, "articulations", [])]
+        except Exception:
+            pass
+        try:
+            dest_event.expressions = [copy.deepcopy(e) for e in getattr(source_event, "expressions", [])]
+        except Exception:
+            pass
+
+    def _get_or_create_measure(
+        self,
+        part: stream.Part,
+        measure_num: int,
+        source_measure: Optional[stream.Measure] = None,
+    ) -> stream.Measure:
+        for measure in part.getElementsByClass(stream.Measure):
+            if measure.number == measure_num:
+                return measure
+
+        new_measure = stream.Measure(number=measure_num)
+        if source_measure is not None:
+            for ts in source_measure.getElementsByClass("TimeSignature"):
+                new_measure.insert(ts.offset, copy.deepcopy(ts))
+            for ks in source_measure.getElementsByClass("KeySignature"):
+                new_measure.insert(ks.offset, copy.deepcopy(ks))
+        part.append(new_measure)
+        return new_measure
+
+    def _event_at_offset(self, measure: stream.Measure, offset: float) -> Optional[Any]:
+        for el in measure.notesAndRests:
+            if not isinstance(el, (note.Note, chord.Chord)):
+                continue
+            if abs(float(el.offset) - offset) <= 1e-4:
+                return el
+        return None
+
+    @staticmethod
+    def _measure_by_number(part: stream.Part, measure_num: int) -> Optional[stream.Measure]:
+        for measure in part.getElementsByClass(stream.Measure):
+            if measure.number == measure_num:
+                return measure
+        return None
+
+    def _insert_selected_pitch(self, item: "OctaveEditorDialog.StaffNoteItem", dest_part: stream.Part) -> bool:
+        pitch_midi = int(item.pitch_obj.midi)
+        dest_measure = self._get_or_create_measure(dest_part, item.measure_num, item.source_measure)
+        existing = self._event_at_offset(dest_measure, item.beat)
+
+        if isinstance(existing, note.Note):
+            if existing.pitch.midi == pitch_midi:
+                return False
+            new_chord = chord.Chord([copy.deepcopy(existing.pitch), copy.deepcopy(item.pitch_obj)])
+            self._copy_event_metadata(existing, new_chord, item.duration_ql)
+            dest_measure.remove(existing)
+            dest_measure.insert(item.beat, new_chord)
+            return True
+
+        if isinstance(existing, chord.Chord):
+            existing_midis = [p.midi for p in existing.pitches]
+            if pitch_midi in existing_midis:
+                return False
+            new_pitches = [copy.deepcopy(p) for p in existing.pitches] + [copy.deepcopy(item.pitch_obj)]
+            new_chord = chord.Chord(new_pitches)
+            self._copy_event_metadata(existing, new_chord, item.duration_ql)
+            dest_measure.remove(existing)
+            dest_measure.insert(item.beat, new_chord)
+            return True
+
+        new_note = note.Note(copy.deepcopy(item.pitch_obj))
+        self._copy_event_metadata(item.event_obj, new_note, item.duration_ql)
+        dest_measure.insert(item.beat, new_note)
+        return True
+
+    def _replace_pitch_at_item(self, item: "OctaveEditorDialog.StaffNoteItem", new_midi: int) -> bool:
+        source_measure = item.source_measure
+        event = self._event_at_offset(source_measure, item.beat)
+        if event is None:
+            return False
+
+        new_midi = max(0, min(127, int(new_midi)))
+        if isinstance(event, note.Note):
+            if event.pitch.midi == new_midi:
+                return False
+            event.pitch.midi = new_midi
+            return True
+
+        if isinstance(event, chord.Chord):
+            old_pitches = list(event.pitches)
+            if not old_pitches:
+                return False
+            replaced = False
+            used_old_idx: Optional[int] = None
+            for idx, p in enumerate(old_pitches):
+                if p.midi == int(item.pitch_obj.midi):
+                    used_old_idx = idx
+                    break
+            if used_old_idx is None:
+                return False
+            new_pitches = []
+            for idx, p in enumerate(old_pitches):
+                cp = copy.deepcopy(p)
+                if idx == used_old_idx:
+                    if cp.midi != new_midi:
+                        cp.midi = new_midi
+                        replaced = True
+                new_pitches.append(cp)
+            if not replaced:
+                return False
+            rebuilt = []
+            seen = set()
+            for p in new_pitches:
+                if p.midi in seen:
+                    continue
+                seen.add(p.midi)
+                rebuilt.append(p)
+            source_measure.remove(event)
+            if len(rebuilt) == 1:
+                new_note = note.Note(rebuilt[0])
+                self._copy_event_metadata(event, new_note, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(item.beat, new_note)
+            else:
+                new_chord = chord.Chord(rebuilt)
+                self._copy_event_metadata(event, new_chord, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(item.beat, new_chord)
+            return True
+        return False
+
+    def _replace_pitch_by_location(
+        self,
+        part_label: str,
+        measure_num: int,
+        beat: float,
+        old_midi: int,
+        new_midi: int,
+    ) -> bool:
+        """Replace a pitch in the current score using stable musical coordinates."""
+        part = self.part_map.get(part_label)
+        if part is None:
+            return False
+        source_measure = self._measure_by_number(part, measure_num)
+        if source_measure is None:
+            return False
+        event = self._event_at_offset(source_measure, beat)
+        if event is None:
+            return False
+
+        new_midi = max(0, min(127, int(new_midi)))
+        if isinstance(event, note.Note):
+            if event.pitch.midi == new_midi:
+                return False
+            event.pitch.midi = new_midi
+            return True
+
+        if isinstance(event, chord.Chord):
+            old_pitches = list(event.pitches)
+            if not old_pitches:
+                return False
+            replaced = False
+            used_old_idx: Optional[int] = None
+            for idx, p in enumerate(old_pitches):
+                if p.midi == int(old_midi):
+                    used_old_idx = idx
+                    break
+            if used_old_idx is None:
+                return False
+
+            new_pitches = []
+            for idx, p in enumerate(old_pitches):
+                cp = copy.deepcopy(p)
+                if idx == used_old_idx:
+                    if cp.midi != new_midi:
+                        cp.midi = new_midi
+                        replaced = True
+                new_pitches.append(cp)
+            if not replaced:
+                return False
+
+            rebuilt = []
+            seen = set()
+            for p in new_pitches:
+                if p.midi in seen:
+                    continue
+                seen.add(p.midi)
+                rebuilt.append(p)
+
+            source_measure.remove(event)
+            if len(rebuilt) == 1:
+                new_note = note.Note(rebuilt[0])
+                self._copy_event_metadata(event, new_note, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(beat, new_note)
+            else:
+                new_chord = chord.Chord(rebuilt)
+                self._copy_event_metadata(event, new_chord, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(beat, new_chord)
+            return True
+        return False
+
+    def _remove_pitch_group(
+        self,
+        source_measure: stream.Measure,
+        source_event: Any,
+        offset: float,
+        midi_values: set,
+    ) -> int:
+        event = source_event
+        if event not in source_measure.notesAndRests:
+            event = self._event_at_offset(source_measure, offset)
+            if event is None:
+                return 0
+
+        if isinstance(event, note.Note):
+            if event.pitch.midi in midi_values:
+                source_measure.remove(event)
+                return 1
+            return 0
+
+        if isinstance(event, chord.Chord):
+            old_pitches = list(event.pitches)
+            remaining = [copy.deepcopy(p) for p in old_pitches if p.midi not in midi_values]
+            removed = len(old_pitches) - len(remaining)
+            if removed <= 0:
+                return 0
+            source_measure.remove(event)
+            if len(remaining) == 1:
+                new_note = note.Note(remaining[0])
+                self._copy_event_metadata(event, new_note, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(offset, new_note)
+            elif len(remaining) > 1:
+                new_chord = chord.Chord(remaining)
+                self._copy_event_metadata(event, new_chord, float(event.duration.quarterLength or 1.0))
+                source_measure.insert(offset, new_chord)
+            return removed
+        return 0
 
     def _shift_selected(self, semitones: int) -> None:
-        items = self._selected_note_items()
-        if not items:
-            QMessageBox.information(self, "No Selection", "Select one or more notes first.")
-            return
-        changed = 0
-        seen_events = set()
-        for item in items:
-            el = item.event_obj
-            key = id(el)
-            if key in seen_events:
-                continue
-            seen_events.add(key)
-            if hasattr(el, "pitches"):
-                for p in el.pitches:
-                    p.midi += semitones
-                changed += 1
-            elif hasattr(el, "pitch"):
-                el.pitch.midi += semitones
-                changed += 1
         action = "+8va" if semitones > 0 else "-8va"
-        self._log(f"{action} applied to {changed} selected note event(s)")
-        self._refresh_note_list()
+        try:
+            items = self._selected_note_items()
+            if not items:
+                QMessageBox.information(self, "No Selection", "Select one or more notes first.")
+                return
+            self._push_undo_snapshot(action)
+            current = self.part_combo.currentText()
+            refs = [
+                (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
+                for item in items
+            ]
+            changed = 0
+            for measure_num, beat, old_midi in refs:
+                if self._replace_pitch_by_location(current, measure_num, beat, old_midi, old_midi + semitones):
+                    changed += 1
+            if current:
+                self._selection_by_part[current] = {
+                    (measure_num, beat, max(0, min(127, old_midi + semitones)))
+                    for measure_num, beat, old_midi in refs
+                }
+            self._log(f"{action} applied to {changed} selected note(s)")
+            self._refresh_note_list()
+        except Exception as e:
+            self._log_exception(action, e)
+            QMessageBox.warning(self, "Editor Error", f"Octave operation failed:\n\n{e}")
 
     def _raise_selected(self) -> None:
         self._shift_selected(12)
@@ -738,29 +1289,134 @@ class OctaveEditorDialog(QDialog):
     def _lower_selected(self) -> None:
         self._shift_selected(-12)
 
+    def _transfer_selected(self, move: bool) -> None:
+        items = self._selected_note_items()
+        if not items:
+            QMessageBox.information(self, "No Selection", "Select one or more notes first.")
+            return
+        source_label = self.part_combo.currentText()
+        dest_label = self.target_part_combo.currentText()
+        if not dest_label:
+            QMessageBox.information(self, "No Destination", "Select a destination part for voicing changes.")
+            return
+        if source_label == dest_label:
+            QMessageBox.warning(self, "Invalid Destination", "Choose a different destination part.")
+            return
+
+        dest_part = self.part_map.get(dest_label)
+        if dest_part is None:
+            QMessageBox.warning(self, "Invalid Destination", "Could not resolve destination part.")
+            return
+        self._push_undo_snapshot(f"{'Move' if move else 'Copy'} to {dest_label}")
+
+        inserted = 0
+        grouped_for_removal: Dict[int, Dict[str, Any]] = {}
+        for item in items:
+            if self._insert_selected_pitch(item, dest_part):
+                inserted += 1
+                if move:
+                    key = id(item.event_obj)
+                    group = grouped_for_removal.setdefault(
+                        key,
+                        {
+                            "measure": item.source_measure,
+                            "event": item.event_obj,
+                            "offset": item.beat,
+                            "midis": set(),
+                        },
+                    )
+                    group["midis"].add(int(item.pitch_obj.midi))
+
+        removed = 0
+        if move:
+            for group in grouped_for_removal.values():
+                removed += self._remove_pitch_group(
+                    source_measure=group["measure"],
+                    source_event=group["event"],
+                    offset=group["offset"],
+                    midi_values=group["midis"],
+                )
+
+        action = "Moved" if move else "Copied"
+        self._log(f"{action} {inserted} selected note(s) from '{source_label}' to '{dest_label}'")
+        if move:
+            self._log(f"Removed {removed} source note(s) from '{source_label}'")
+            self._selection_by_part[source_label] = set()
+        else:
+            self._selection_by_part[source_label] = {self._note_item_key(item) for item in items}
+        moved_keys = {
+            (item.measure_num, round(float(item.beat), 6), int(item.pitch_obj.midi))
+            for item in items
+        }
+        existing_dest = set(self._selection_by_part.get(dest_label, set()))
+        self._selection_by_part[dest_label] = existing_dest | moved_keys
+        self._refresh_note_list()
+
+    def _delete_selected(self) -> None:
+        items = self._selected_note_items()
+        if not items:
+            QMessageBox.information(self, "No Selection", "Select one or more notes first.")
+            return
+        self._push_undo_snapshot("Delete selected notes")
+        grouped: Dict[int, Dict[str, Any]] = {}
+        for item in items:
+            key = id(item.event_obj)
+            group = grouped.setdefault(
+                key,
+                {"measure": item.source_measure, "event": item.event_obj, "offset": item.beat, "midis": set()},
+            )
+            group["midis"].add(int(item.pitch_obj.midi))
+
+        removed = 0
+        for group in grouped.values():
+            removed += self._remove_pitch_group(
+                source_measure=group["measure"],
+                source_event=group["event"],
+                offset=group["offset"],
+                midi_values=group["midis"],
+            )
+        current = self.part_combo.currentText()
+        self._selection_by_part[current] = set()
+        self._log(f"Deleted {removed} selected note(s)")
+        self._refresh_note_list()
+
     def _select_visible(self) -> None:
         for item in self.note_items:
             item.setSelected(True)
         self._update_selection_summary()
 
     def _clear_selection(self) -> None:
-        self.scene.clearSelection()
-        self._update_selection_summary()
+        try:
+            self.scene.clearSelection()
+            self._update_selection_summary()
+        except Exception as exc:
+            self._log_exception("clear selection", exc)
 
     def _update_selection_summary(self) -> None:
-        selected = self._selected_note_items()
-        for item in self.note_items:
-            item._apply_style(item.isSelected())
-        if not selected:
-            self.selection_label.setText("No notes selected")
-            return
-        preview = ", ".join(
-            f"M{item.measure_num} beat {item.beat:.2f} {item.pitch_text}"
-            for item in selected[:6]
-        )
-        if len(selected) > 6:
-            preview += f", ... ({len(selected)} selected)"
-        self.selection_label.setText(preview)
+        try:
+            if self._suspend_selection_updates:
+                return
+            selected = self._selected_note_items()
+            current = self.part_combo.currentText()
+            if current:
+                self._selection_by_part[current] = {self._note_item_key(item) for item in selected}
+            for item in self.note_items:
+                try:
+                    item._apply_style(item.isSelected())
+                except RuntimeError:
+                    continue
+            if not selected:
+                self.selection_label.setText("No notes selected")
+                return
+            preview = ", ".join(
+                f"M{item.measure_num} beat {item.beat:.2f} {item.pitch_obj.nameWithOctave}"
+                for item in selected[:6]
+            )
+            if len(selected) > 6:
+                preview += f", ... ({len(selected)} selected)"
+            self.selection_label.setText(preview)
+        except Exception as exc:
+            self._log_exception("update selection summary", exc)
 
     def _save(self) -> None:
         if not self.score:
@@ -1023,7 +1679,7 @@ class ScoreArranger(QMainWindow):
         self.open_editor_btn.clicked.connect(self.open_existing_for_editor)
         export_row.addWidget(self.open_editor_btn)
 
-        self.editor_btn = QPushButton("8va Editor...")
+        self.editor_btn = QPushButton("Visual Editor...")
         self.editor_btn.setEnabled(False)
         self.editor_btn.setStyleSheet("background-color: #6A1B9A; color: white; border: none; padding: 8px 16px; border-radius: 5px; font-size: 12px; font-weight: bold;")
         self.editor_btn.clicked.connect(self.open_octave_editor)
@@ -1268,7 +1924,7 @@ class ScoreArranger(QMainWindow):
             dlg = OctaveEditorDialog(self.last_output_path, self)
             dlg.exec_()
         except Exception as e:
-            QMessageBox.critical(self, "Editor Error", f"Could not open 8va editor:\n\n{e}")
+            QMessageBox.critical(self, "Editor Error", f"Could not open visual editor:\n\n{e}")
 
     def open_existing_for_editor(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
