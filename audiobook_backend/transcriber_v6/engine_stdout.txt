@@ -1,0 +1,35 @@
+Found 2 .mxl files
+[001] Using: beethoven-symphony-no-5-op67-mvt-1.mxl
+[002] 1/7 Parsing score...
+[003]    OK - 12 parts
+[004] 2/7 Importing engine...
+[005]    OK
+[006] 3/7 Creating engine...
+[007]    OK
+[008] 4/7 Converting to concert pitch...
+[009]    OK
+[010] 5/7 Analyzing sources (first 2 parts)...
+[011]    Part 0: Flute...
+[012]    -> 622 notes
+[013]    Part 1: Oboe...
+[014]    -> 613 notes
+[015] 6/7 Full arrange()...
+[016] Converting to concert pitch...
+[017] Analyzing source score...
+[018]   Source: Flute [63-93] (woodwind)
+[019]   Source: Oboe [65-86] (woodwind)
+Traceback (most recent call last):
+  File "C:\Users\rotar\OneDrive\Desktop\universal-transcriber\transcriber_v2\tests\test_engine.py", line 49, in <module>
+    result = engine.arrange(score_concert, targets, ensemble_def)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\rotar\OneDrive\Desktop\universal-transcriber\transcriber_v2\transcriber\engine.py", line 109, in arrange
+    source_info = self._analyze_sources(source_parts)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\rotar\OneDrive\Desktop\universal-transcriber\transcriber_v2\transcriber\engine.py", line 160, in _analyze_sources
+    self.log(f"  Source: {name} [{lo}-{hi}] ({', '.join(sorted(families))}){flag}")
+  File "C:\Users\rotar\OneDrive\Desktop\universal-transcriber\transcriber_v2\tests\test_engine.py", line 10, in log
+    print(f'[{len(LOG):03d}] {msg}', flush=True)
+  File "C:\Users\rotar\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u266d' in position 17: character maps to <undefined>
