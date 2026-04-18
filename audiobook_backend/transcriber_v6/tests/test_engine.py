@@ -1,60 +1,100 @@
-import sys
-sys.path.insert(0, '.')
+from music21 import meter, note, stream
 
-from pathlib import Path
-from music21 import converter
-
-LOG = []
-def log(msg):
-    LOG.append(msg)
-    print(f'[{len(LOG):03d}] {msg}', flush=True)
-
-mxl_dir = Path(__file__).parent.parent.parent
-mxl_files = sorted(mxl_dir.glob('*.mxl'))
-print(f'Found {len(mxl_files)} .mxl files', flush=True)
-mxl_path = str(mxl_files[0])
-log(f'Using: {Path(mxl_path).name}')
-
-log('1/7 Parsing score...')
-score = converter.parse(mxl_path)
-log(f'   OK - {len(score.parts)} parts')
-
-log('2/7 Importing engine...')
 from transcriber.engine import ArrangementEngine
-from transcriber.instruments import ENSEMBLE_DB, ENSEMBLE_PRESETS
-log('   OK')
 
-log('3/7 Creating engine...')
-engine = ArrangementEngine(log_fn=log)
-log('   OK')
 
-log('4/7 Converting to concert pitch...')
-try:
-    score_concert = score.toSoundingPitch()
-    log('   OK')
-except Exception as e:
-    log(f'   Error: {e}')
-    score_concert = score
+def _make_measure(number: int, events, time_signature: str = "4/4") -> stream.Measure:
+    measure = stream.Measure(number=number)
+    if time_signature:
+        measure.insert(0, meter.TimeSignature(time_signature))
+    for offset, element in events:
+        measure.insert(offset, element)
+    return measure
 
-log('5/7 Analyzing sources (first 2 parts)...')
-for i, part in enumerate(score_concert.parts[:2]):
-    name = part.partName or f'Part {i+1}'
-    log(f'   Part {i}: {name}...')
-    count = sum(1 for _ in part.recurse().notes)
-    log(f'   -> {count} notes')
 
-log('6/7 Full arrange()...')
-targets = ENSEMBLE_PRESETS['Brass Quintet']
-ensemble_def = ENSEMBLE_DB['Brass Quintet']
-result = engine.arrange(score_concert, targets, ensemble_def)
-log(f'   OK - {len(result.parts)} parts')
+def _make_part(name: str, measures) -> stream.Part:
+    part = stream.Part()
+    part.partName = name
+    for measure in measures:
+        part.append(measure)
+    return part
 
-log('7/7 Saving...')
-out_path = str(mxl_dir / 'test_output.musicxml')
-result.write('musicxml', fp=out_path)
-log(f'   Saved')
 
-log('DONE!')
+def _get_measure_notes(result: stream.Score, part_name: str, measure_number: int):
+    part = next(part for part in result.parts if part.partName == part_name)
+    measure = next(m for m in part.getElementsByClass(stream.Measure) if m.number == measure_number)
+    return list(measure.recurse().notes)
 
-with open(Path(__file__).parent.parent / 'engine_test_log.txt', 'w') as f:
-    f.write('\n'.join(LOG))
+
+def test_iter_measure_notes_merges_all_voices_in_offset_order():
+    measure = stream.Measure(number=1)
+    voice_a = stream.Voice()
+    voice_a.insert(0, note.Note("C4"))
+
+    voice_b = stream.Voice()
+    hidden = note.Note("F4")
+    hidden.style.hideObjectOnPrint = True
+    voice_b.insert(1, hidden)
+    voice_b.insert(2, note.Note("E4"))
+
+    measure.insert(0, voice_a)
+    measure.insert(0, voice_b)
+
+    events = list(ArrangementEngine._iter_measure_notes(measure))
+
+    assert [float(el.offset) for el in events] == [0.0, 2.0]
+    assert [el.pitch.nameWithOctave for el in events] == ["C4", "E4"]
+
+
+def test_full_pool_empty_measure_fallback_uses_target_transposition():
+    score = stream.Score()
+    high_source = _make_part(
+        "High Source",
+        [
+            _make_measure(1, [(0, note.Note("C5"))]),
+            _make_measure(2, [(0, note.Rest(quarterLength=4))], time_signature=""),
+        ],
+    )
+    low_source = _make_part(
+        "Low Source",
+        [
+            _make_measure(1, [(0, note.Rest(quarterLength=4))]),
+            _make_measure(2, [(0, note.Note("C2"))], time_signature=""),
+        ],
+    )
+    score.append(high_source)
+    score.append(low_source)
+
+    result = ArrangementEngine().arrange(score, ["Trumpet", "Tuba"])
+
+    tuba_notes = _get_measure_notes(result, "Tuba", 1)
+
+    assert [n.pitch.midi for n in tuba_notes] == [36]
+
+
+def test_full_pool_gap_fill_uses_target_transposition():
+    score = stream.Score()
+    high_source = _make_part(
+        "High Source",
+        [
+            _make_measure(1, [(2, note.Note("C5"))]),
+            _make_measure(2, [(0, note.Rest(quarterLength=4))], time_signature=""),
+        ],
+    )
+    low_source = _make_part(
+        "Low Source",
+        [
+            _make_measure(1, [(0, note.Note("C2"))]),
+            _make_measure(2, [(0, note.Note("C2"))], time_signature=""),
+        ],
+    )
+    score.append(high_source)
+    score.append(low_source)
+
+    result = ArrangementEngine().arrange(score, ["Trumpet", "Tuba"])
+
+    tuba_notes = _get_measure_notes(result, "Tuba", 1)
+    note_positions = {(float(n.offset), n.pitch.midi) for n in tuba_notes}
+
+    assert (0.0, 36) in note_positions
+    assert (2.0, 36) in note_positions

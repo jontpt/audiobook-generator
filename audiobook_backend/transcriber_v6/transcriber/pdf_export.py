@@ -54,7 +54,7 @@ def save_settings(settings: Dict[str, Any]) -> None:
 # ═══════════════════════════════════════════════════════════════════════
 
 def find_java_executable() -> Optional[str]:
-    """Return path to a working java.exe, or None."""
+    """Return path to a working Java executable, or None."""
     # 1. PATH
     java = shutil.which("java")
     if java and _java_works(java):
@@ -63,9 +63,10 @@ def find_java_executable() -> Optional[str]:
     # 2. JAVA_HOME
     java_home = os.environ.get("JAVA_HOME", "")
     if java_home:
-        candidate = Path(java_home) / "bin" / "java.exe"
-        if candidate.exists() and _java_works(str(candidate)):
-            return str(candidate)
+        for name in ("java.exe", "java"):
+            candidate = Path(java_home) / "bin" / name
+            if candidate.exists() and _java_works(str(candidate)):
+                return str(candidate)
 
     # 3. Common installation roots
     for root_str in JAVA_SEARCH_ROOTS:
@@ -77,9 +78,10 @@ def find_java_executable() -> Optional[str]:
         except PermissionError:
             continue
         for sub in subdirs:
-            candidate = sub / "bin" / "java.exe"
-            if candidate.exists() and _java_works(str(candidate)):
-                return str(candidate)
+            for name in ("java.exe", "java"):
+                candidate = sub / "bin" / name
+                if candidate.exists() and _java_works(str(candidate)):
+                    return str(candidate)
 
     return None
 
