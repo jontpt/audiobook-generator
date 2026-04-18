@@ -234,7 +234,7 @@ class AudiverisSetupDialog(QDialog):
         self._auto_java = auto_java
         self.java_status_lbl = QLabel(
             f"✓ Auto-detected: {auto_java}" if auto_java
-            else "✗ Not found — browse to java.exe or install Java 11+"
+            else "✗ Not found — browse to the Java executable or install Java 11+"
         )
         self.java_status_lbl.setWordWrap(True)
         self.java_status_lbl.setStyleSheet(
@@ -245,7 +245,7 @@ class AudiverisSetupDialog(QDialog):
 
         java_path_row = QHBoxLayout()
         self.java_edit = QLineEdit(current_java or "")
-        self.java_edit.setPlaceholderText("Leave blank for auto-detect, or browse to java.exe")
+        self.java_edit.setPlaceholderText("Leave blank for auto-detect, or browse to the Java executable")
         java_path_row.addWidget(self.java_edit)
         java_browse_btn = QPushButton("Browse…")
         java_browse_btn.setStyleSheet("background-color: #607D8B; color: white; padding: 6px 12px;")
@@ -281,7 +281,7 @@ class AudiverisSetupDialog(QDialog):
         self._auto_mscore = auto_mscore
         self.mscore_status_lbl = QLabel(
             f"Auto-detected: {auto_mscore}" if auto_mscore
-            else "Not found — browse to MuseScore4.exe or install MuseScore"
+            else "Not found — browse to the MuseScore executable or install MuseScore"
         )
         self.mscore_status_lbl.setWordWrap(True)
         self.mscore_status_lbl.setStyleSheet(
@@ -292,7 +292,7 @@ class AudiverisSetupDialog(QDialog):
 
         mscore_path_row = QHBoxLayout()
         self.mscore_edit = QLineEdit(current_mscore or "")
-        self.mscore_edit.setPlaceholderText("Leave blank for auto-detect, or browse to the .exe")
+        self.mscore_edit.setPlaceholderText("Leave blank for auto-detect, or browse to the executable")
         mscore_path_row.addWidget(self.mscore_edit)
         ms_browse_btn = QPushButton("Browse...")
         ms_browse_btn.setStyleSheet("background-color: #607D8B; color: white; padding: 6px 12px;")
@@ -334,7 +334,7 @@ class AudiverisSetupDialog(QDialog):
         self._auto_java = auto
         self.java_status_lbl.setText(
             f"✓ Auto-detected: {auto}" if auto
-            else "✗ Not found — browse to java.exe or install Java 11+"
+            else "✗ Not found — browse to the Java executable or install Java 11+"
         )
         self.java_status_lbl.setStyleSheet(
             "color: #4CAF50; font-size: 11px; font-weight: bold;" if auto
@@ -342,7 +342,12 @@ class AudiverisSetupDialog(QDialog):
         )
 
     def _browse_java(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Select java.exe", "C:/Program Files", "Executable (java.exe java);;All Files (*)")
+        p, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Java executable",
+            str(Path.home()),
+            "Executable (*)",
+        )
         if p:
             self.java_edit.setText(p)
 
@@ -352,7 +357,12 @@ class AudiverisSetupDialog(QDialog):
             self.jar_edit.setText(p)
 
     def _browse_mscore(self) -> None:
-        p, _ = QFileDialog.getOpenFileName(self, "Select MuseScore executable", "C:/Program Files", "Executable (*.exe);;All Files (*)")
+        p, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select MuseScore executable",
+            str(Path.home()),
+            "Executable (*)",
+        )
         if p:
             self.mscore_edit.setText(p)
 
@@ -361,7 +371,7 @@ class AudiverisSetupDialog(QDialog):
         self._auto_mscore = auto
         self.mscore_status_lbl.setText(
             f"Auto-detected: {auto}" if auto
-            else "Not found — browse to MuseScore4.exe or install MuseScore"
+            else "Not found — browse to the MuseScore executable or install MuseScore"
         )
         self.mscore_status_lbl.setStyleSheet(
             "color: #4CAF50; font-size: 11px; font-weight: bold;" if auto
@@ -1799,6 +1809,17 @@ class ScoreArranger(QMainWindow):
 
     def closeEvent(self, event) -> None:
         if self.thread and self.thread.isRunning():
-            self.thread.terminate()
-            self.thread.wait(3000)
+            reply = QMessageBox.question(
+                self,
+                "Arrangement in Progress",
+                "Arrangement/export is still running.\n\n"
+                "Close the window only after the current task finishes?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
+            self.log_msg("Waiting for background conversion to finish before closing...")
+            self.thread.wait()
         event.accept()

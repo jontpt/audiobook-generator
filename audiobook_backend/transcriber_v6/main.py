@@ -42,8 +42,9 @@ log("=== START ===")
 
 try:
     log("1. Setting env...")
-    os.environ.setdefault("QT_QPA_PLATFORM", "windows")
-    log("   env set")
+    if sys.platform.startswith("win"):
+        os.environ.setdefault("QT_QPA_PLATFORM", "windows")
+    log(f"   QT_QPA_PLATFORM={os.environ.get('QT_QPA_PLATFORM', '(default)')}")
 
     log("2. Importing PyQt5...")
     from PyQt5.QtWidgets import QApplication, QMessageBox

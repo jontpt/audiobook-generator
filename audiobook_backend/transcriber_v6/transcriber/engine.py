@@ -689,7 +689,11 @@ class ArrangementEngine:
         ]
 
         all_source_m_maps = [
-            (src, {m.number: m for m in src["part"].getElementsByClass(stream.Measure)})
+            (
+                src,
+                {m.number: m for m in src["part"].getElementsByClass(stream.Measure)},
+                self._calc_transpose_for(src, target),
+            )
             for src in (all_pitched_sources or [])
         ]
 
@@ -790,7 +794,7 @@ class ArrangementEngine:
             # Sparse measure guard
             active_src_count = 0
             if all_source_m_maps:
-                for _src, _m_map in all_source_m_maps:
+                for _src, _m_map, _src_trans in all_source_m_maps:
                     _src_m = _m_map.get(m_num)
                     if _src_m and any(isinstance(_el, (note.Note, chord.Chord)) for _el in self._iter_measure_notes(_src_m)):
                         active_src_count += 1
@@ -824,10 +828,10 @@ class ArrangementEngine:
 
                 # Pass 2: full pool — only if no assigned secondary had notes here
                 if best_src_m is None and all_source_m_maps:
-                    for src, m_map in all_source_m_maps:
+                    for src, m_map, src_trans in all_source_m_maps:
                         src_m = m_map.get(m_num)
                         if src_m:
-                            _score_empty(src_m, 0)
+                            _score_empty(src_m, src_trans)
 
                 if best_src_m:
                     for el in self._iter_measure_notes(best_src_m):
@@ -853,7 +857,7 @@ class ArrangementEngine:
 
             # Gap filling — assigned secondaries preferred, full pool as fallback
             if placed_spans:
-                gap_candidates: Dict[float, Tuple[Any, float, float, int]] = {}
+                gap_candidates: Dict[float, Tuple[Any, float, float, int, bool]] = {}
 
                 def _add_gap_candidate(el, start, ql, trans, prefer: bool) -> None:
                     end = start + ql
@@ -864,13 +868,12 @@ class ArrangementEngine:
                     existing = gap_candidates.get(start)
                     # Prefer assigned secondaries over full-pool candidates
                     if existing is None:
-                        gap_candidates[start] = (copy.deepcopy(el), dist, ql, trans)
-                    elif prefer and not existing[3] == -1:
-                        # Assigned secondary always beats a full-pool entry (sentinel -1)
-                        gap_candidates[start] = (copy.deepcopy(el), dist, ql, trans)
-                    elif prefer or existing[3] == -1:
+                        gap_candidates[start] = (copy.deepcopy(el), dist, ql, trans, prefer)
+                    elif prefer and not existing[4]:
+                        gap_candidates[start] = (copy.deepcopy(el), dist, ql, trans, prefer)
+                    elif prefer == existing[4]:
                         if dist < existing[1]:
-                            gap_candidates[start] = (copy.deepcopy(el), dist, ql, trans)
+                            gap_candidates[start] = (copy.deepcopy(el), dist, ql, trans, prefer)
 
                 # Pass 1: assigned secondaries
                 for s, s_map, s_trans in secondary_measures:
@@ -889,8 +892,11 @@ class ArrangementEngine:
 
                 # Pass 2: full pool for offsets not covered by an assigned secondary
                 if all_source_m_maps:
-                    assigned_covered = set(gap_candidates.keys())
-                    for src, m_map in all_source_m_maps:
+                    assigned_covered = {
+                        start for start, (_, _, _, _, from_assigned) in gap_candidates.items()
+                        if from_assigned
+                    }
+                    for src, m_map, src_trans in all_source_m_maps:
                         src_m = m_map.get(m_num)
                         if not src_m:
                             continue
@@ -904,13 +910,13 @@ class ArrangementEngine:
                             if start in assigned_covered:
                                 continue  # assigned secondary already covers this offset
                             ql = min(ql, bar_ql - start)
-                            _add_gap_candidate(el, start, ql, -1, prefer=False)
+                            _add_gap_candidate(el, start, ql, src_trans, prefer=False)
 
-                for start, (el_copy, _, clipped_ql, fill_trans) in sorted(gap_candidates.items()):
+                for start, (el_copy, _, clipped_ql, fill_trans, _from_assigned) in sorted(gap_candidates.items()):
                     if start in placed_offsets or self._span_overlaps((start, start + clipped_ql), placed_spans):
                         continue
                     el_copy.duration.quarterLength = clipped_ql
-                    if fill_trans not in (0, -1):
+                    if fill_trans != 0:
                         el_copy = el_copy.transpose(fill_trans)
                     if not is_perc:
                         self._shift_into_range(el_copy, target_lo, target_hi, tess_lo, tess_hi, allow_pedal, last_midi)
@@ -1343,31 +1349,32 @@ class ArrangementEngine:
 
     @staticmethod
     def _iter_measure_notes(measure: stream.Measure):
-        """Yield notes/rests from a measure, handling Voice sub-streams."""
+        """Yield visible notes/rests from a measure in offset order.
+
+        When a measure contains multiple Voice streams, include events from all
+        voices instead of collapsing the measure to a single "best" voice.
+        """
+        def _is_hidden(el) -> bool:
+            try:
+                return bool(getattr(el, "style", None) and el.style.hideObjectOnPrint)
+            except Exception:
+                return False
+
         voices = list(measure.getElementsByClass(stream.Voice))
         if not voices:
-            yield from measure.notesAndRests
+            for el in measure.notesAndRests:
+                if not _is_hidden(el):
+                    yield el
             return
 
-        def _count(v):
-            n = 0
-            for el in v.notesAndRests:
-                if isinstance(el, (note.Note, chord.Chord)):
-                    try:
-                        if getattr(el, "style", None) and el.style.hideObjectOnPrint:
-                            continue
-                    except Exception:
-                        pass
-                    n += 1
-            return n
-
-        best_voice = max(voices, key=_count)
-        for el in best_voice.notesAndRests:
-            try:
-                if getattr(el, "style", None) and el.style.hideObjectOnPrint:
+        merged = []
+        for voice_idx, voice_stream in enumerate(voices):
+            for elem_idx, el in enumerate(voice_stream.notesAndRests):
+                if _is_hidden(el):
                     continue
-            except Exception:
-                pass
+                merged.append((common.opFrac(el.offset), voice_idx, elem_idx, el))
+
+        for _offset, _voice_idx, _elem_idx, el in sorted(merged, key=lambda item: (item[0], item[1], item[2])):
             yield el
 
     def _smooth_octave_jumps(

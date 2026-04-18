@@ -1,7 +1,5 @@
 """Minimal test - just try to create and show a PyQt5 window."""
 import sys
-import os
-os.environ["QT_QPA_PLATFORM"] = "windows"
 
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout
 from PyQt5.QtCore import QTimer
